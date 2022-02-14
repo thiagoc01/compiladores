@@ -516,15 +516,9 @@ void resolve_enderecos(vector<string> &codigo)
 	}
 	
 	// Remove os marcadores finais
-	for (int i = 0 ; i < codigo.size(); i++)
-	{
-		if (codigo[i][0] == '~' || codigo[i][0] == '$')
-		{
-			codigo.erase(codigo.begin() + i);
-			i--;
-			continue;
-		}
-	}
+	
+	for (int i = posicoes_labels_finais.size() - 1 ; i >= 0 ; i--)
+		codigo.erase(codigo.begin() + posicoes_labels_finais[i]);
 	
 }
 
