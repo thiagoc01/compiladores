@@ -21,6 +21,7 @@ struct Atributos {
 #define YYSTYPE Atributos
 
 vector< map<string, Atributos> > escopos;
+map<string, int> posicoes_labels_iniciais;
 int label_if = 1;
 int label_else = 1;
 int label_for = 1;
@@ -34,12 +35,10 @@ void cria_escopo();
 void deleta_escopo();
 void checa_condicao_variavel(string nome);
 void print(string s);
-//void concatena_vetor(vector<string> *v1, vector<string> v2);
 vector<string> concatena_vetor(vector<string> v1, vector<string> v2);
 void gera_codigo(vector<string> codigo);
 string gera_label_inicial(string nome, int label);
 string gera_label_final(string nome, int label);
-void coloca_endereco(string marcador, int posicao_atual, vector<int> posicoes_labels_finais, vector<string> &codigo, bool e_loop);
 void resolve_enderecos(vector<string> &codigo);
 
 extern int linha;
@@ -57,7 +56,7 @@ string ultimo_tipo_declarado; // Referencial para declarações, em caso de have
 %%
 
 
-FIM : S {$1.c.push_back("."); resolve_enderecos($1.c); gera_codigo($1.c); };
+FIM : S {$1.c.push_back("."); resolve_enderecos($1.c); gera_codigo($1.c);};
 
 S :  CMD S {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; } 
 	| CMD ;
@@ -200,7 +199,10 @@ chamada_if:  tk_if '(' E ')'
 			{
 				ultimo_token = -1; 
 				$3.c.push_back("!");
+				/* Marca o início do if. Coloca no map de posicões iniciais para que, ao chegar no fim do if, possamos colocar o offset na posição. */
 				$3.c.push_back(gera_label_inicial("if", label_if));
+				posicoes_labels_iniciais.insert({$3.c[$3.c.size() - 1],$3.c.size() - 1});
+				
 				$3.c.push_back("?");			
 			}
 						
@@ -208,44 +210,70 @@ chamada_if:  tk_if '(' E ')'
 			
 			{
 				$3.c = concatena_vetor($3.c, $6.c);
+				
+				/* Mesmo raciocínio do if descrito anteriormente. */
 				$3.c.push_back(gera_label_inicial("else", label_else));
+				posicoes_labels_iniciais.insert({$3.c[$3.c.size() - 1],$3.c.size() - 1});
 				$3.c.push_back("#");
-				$3.c.push_back(gera_label_final("if", label_if-1));
+				
+				
+				string para_encontrar = gera_label_final("if", label_if-1); // String para encontrar no map o label inicial desse if.
+				map<string,int>::iterator i = posicoes_labels_iniciais.find(para_encontrar);
+				$3.c[i->second] = para_encontrar + "+" + to_string(1 + $6.c.size() + 3); // Pula a ?, o tamanho do CMD do if atual, o label do else e o # 
+				posicoes_labels_iniciais.erase(i);
 				
 			}
 						
 			chamada_else
 			
-			{
-				
+			{				
 				$3.c = concatena_vetor($3.c, $8.c);
-				$3.c.push_back(gera_label_final("else", label_else-1));
+				
+				/* Mesmo raciocínio do if descrito anteriormente. */
+				string para_encontrar = gera_label_final("else", label_else-1);				
+				map<string,int>::iterator i = posicoes_labels_iniciais.find(para_encontrar);
+				$3.c[i->second] = para_encontrar + "+" + to_string(1 + $8.c.size() + 1); // Pula o # e o tamanho do CMD do else
+				posicoes_labels_iniciais.erase(i);
 				
 				$$ = $3;
 				$3.c.clear();
 			};
 
-chamada_else: tk_else {ultimo_token = -1; }CMD {$$ = $3;}
+chamada_else: tk_else {ultimo_token = -1;} CMD {$$ = $3;}
 			| ;
 
 chamada_while:	tk_while '(' E ')' 
 		{
-			$2.c.push_back(gera_label_inicial("while", label_while));
+			/* Marca o começo do while, ou seja, onde começa a expressão condicional. */
+			
+			string para_encontrar = gera_label_inicial("while", label_while);
+			
 			$2.c = concatena_vetor($2.c, $3.c);
 			ultimo_token = -1;
 			$2.c.push_back("!");
+			
+			/* Mesmo raciocínio de um if comum. */
 			$2.c.push_back(gera_label_inicial("if", label_if));
-			$2.c.push_back("?");
-			
-			
-			
+			posicoes_labels_iniciais.insert({$2.c[$2.c.size() - 1],$2.c.size() - 1});
+			$2.c.push_back("?");			
 		}
 		CMD
 		{
 			$2.c = concatena_vetor($2.c, $6.c);
-			$2.c.push_back(gera_label_final("while", label_while-1));
+			
+			/* Chegando no fim de um while, basta colocarmos como offset o tamanho do comando acrescido do tamanho da expressão condicional. */
+			string para_encontrar = gera_label_final("while", label_while-1);			
+			$2.c.push_back(para_encontrar + "-" + to_string($2.c.size()));
+			
 			$2.c.push_back("#");
-			$2.c.push_back(gera_label_final("if", label_if-1));
+			
+			/* Mesmo raciocínio de um if. */
+			para_encontrar = gera_label_final("if", label_if-1);
+			map<string,int>::iterator i = posicoes_labels_iniciais.find(para_encontrar);
+			$2.c[i->second] = para_encontrar + "+" + to_string(1 + $6.c.size() + 3); // Pula a ?, o tamanho do CMD do while atual e o goto de repetição
+			
+			posicoes_labels_iniciais.erase(i);
+			
 			$$ = $2;
 			$3.c.clear();
 		}
@@ -255,11 +283,18 @@ chamada_while:	tk_while '(' E ')'
 
 chamada_for :	tk_for '(' for_decl_ou_atrib ';' E ';' for_incr_ou_nao ')'
 		{
-			$3.c.push_back(gera_label_inicial("for", label_for));
+			/* Marca o começo do for, ou seja, onde termina a declaração e começa a expressão condicional. */
+			string para_encontrar = gera_label_inicial("for", label_for);
+			posicoes_labels_iniciais.insert({para_encontrar, $3.c.size() - 1});
+			
 			$3.c = concatena_vetor($3.c, $5.c);
 			ultimo_token = -1;
 			$3.c.push_back("!");
+			
+			/* Mesmo raciocínio de um if. */
 			$3.c.push_back(gera_label_inicial("if", label_if));
+			posicoes_labels_iniciais.insert({$3.c[$3.c.size() - 1],$3.c.size() - 1});
+			
 			$3.c.push_back("?");		
 		}
 		
@@ -268,9 +303,23 @@ chamada_for :	tk_for '(' for_decl_ou_atrib ';' E ';' for_incr_ou_nao ')'
 		{
 			$3.c = concatena_vetor($3.c, $10.c);
 			$3.c = concatena_vetor($3.c, $7.c);
-			$3.c.push_back(gera_label_final("for", label_for-1));
+			string para_encontrar = gera_label_final("for", label_for-1);
+			/* Diferente do while, antes da expressão há a declaração ou atribuição. Então, não podemos ir para a posição 0 do vetor. */
+			
+			map<string,int>::iterator i = posicoes_labels_iniciais.find(para_encontrar);
+			$3.c.push_back(para_encontrar + "-" + to_string($3.c.size() - 1 - i->second));
+			posicoes_labels_iniciais.erase(i);
+			
 			$3.c.push_back("#");
-			$3.c.push_back(gera_label_final("if", label_if-1));
+			
+			/* Mesmo raciocínio de um if, mas agora pulamos o comando e o incremento. */
+			
+			para_encontrar = gera_label_final("if", label_if-1);
+			i = posicoes_labels_iniciais.find(para_encontrar);
+			$3.c[i->second] = para_encontrar + "+" + to_string(1 + $7.c.size() + $10.c.size() + 3); // Pula a ?, o tamanho do CMD do for atual, o tamanho da atribuicao e o goto de repetição
+
+			posicoes_labels_iniciais.erase(i);
+			
 			$$ = $3;
 			$3.c.clear();
 			$5.c.clear();
@@ -389,7 +438,7 @@ string gera_label_inicial(string nome, int label)
 	else if (nome == "for")
 		label_for++;
 		
-	string ret =  "$";
+	string ret =  "%";
 	return ret + nome + "_" + to_string(label);
 }
 
@@ -404,7 +453,7 @@ string gera_label_final(string nome, int label)
 	else if (nome == "for")
 		label_for--;
 		
-	string ret = "~";
+	string ret = "%";
 	return ret + nome + "_" + to_string(label);
 }
 
@@ -425,11 +474,6 @@ void gera_codigo(vector<string> codigo)
 		print(s);
 }
 
-/*void concatena_vetor(vector<string> *v1, vector<string> v2)
-{
-	v1->insert( v1->end(), v2.begin(), v2.end() );
-}*/
-
 vector<string> concatena_vetor(vector<string> v1, vector<string> v2)
 {
 	vector<string> temp = v1;
@@ -439,86 +483,25 @@ vector<string> concatena_vetor(vector<string> v1, vector<string> v2)
 	return temp;
 }
 
-void coloca_endereco(string marcador, int posicao_atual, vector<int> posicoes_labels_finais, vector<string> &codigo, bool e_loop)
-{
-	/* A variável shift nos dois escopos guarda a posição final para o goto, depois do cálculo do número de shifts que ocorrem antes da posição. Inicialmente, não há shift. */
-	
-	// Devemos encontrar o $ para referência
-	
-	string para_encontrar = "$";	
-	
-	// Se é loop, devemos colocar o endereço no lugar do "marcador final", ou seja, onde está o ~
-	
-	if (e_loop)
-	{
-		// A posição passada nessa função é que terá o endereço. Então o shift é calculado depois de procurar o marcador. 
-		
-		for (int j = posicao_atual - 1 ; j >= 0; j--) // Procura, de forma contrária, no vetor pelo marcador inicial
-		{
-			if (codigo[j] == para_encontrar + marcador)
-			{
-				int shift = j; // Como o goto irá para antes da posição que guarda o endereço, devemos verificar os possíveis shifts antes da expressão condicional do loop
-				
-				for (int num : posicoes_labels_finais)
-				{
-					if (num < j) // Se a posição que tem um label final for menor, então ali vai ocorrer um shift
-						shift--; // Reduzir um da posição final para o goto
-				}
-				codigo[posicao_atual] =  to_string(shift);
-				break;
-			}
-		}
-	}
-
-	// Caso contrário, o endereço é colocado onde está o $label
-	
-	else
-	{
-		/* Irá calcular quantos shifts vão ocorrer antes daquela posição, o que irá mudar o endereço final. Inicialmente, não há shift. */
-		int shift = posicao_atual; 
-		
-		// A posição passada nessa função é que será removida. Então o shift é calculado antes de procurar o marcador. 
-			
-		for (int num : posicoes_labels_finais)
-		{
-			if (num < posicao_atual) // Se a posição que tem um label final for menor, então ali vai ocorrer um shift
-				shift--; // Reduzir um da posição final para o goto
-		}
-		
-		for (int j = posicao_atual - 1 ; j >= 0; j--) 
-		{
-			if (codigo[j] == para_encontrar + marcador)
-			{
-				codigo[j] =  to_string(shift);
-				break;
-			}
-		}
-	}
-}
-
 void resolve_enderecos(vector<string> &codigo)
 {
-	vector<int> posicoes_labels_finais; // Guarda onde estão os labels finais
-	
 	for (int i = 0 ; i < codigo.size() ; i++)
 	{
-		if (codigo[i].substr(0,3) == "~if" || codigo[i].substr(0,5) == "~else" || codigo[i].substr(0,6) == "$while" || codigo[i].substr(0,4) == "$for") // Achou um label final
-			posicoes_labels_finais.push_back(i);
+		if (codigo[i][0] == '%')
+		{
+			if (codigo[i][1] == 'f' || codigo[i][1] == 'w')
+			{
+				int offset = stoi(codigo[i].substr(codigo[i].find("-") + 1)); 
+				codigo[i] = to_string(i - offset);				
+			}
 			
+			else
+			{
+				int offset = stoi(codigo[i].substr(codigo[i].find("+")));
+				codigo[i] = to_string(i + offset);
+			}
+		}
 	}
-	for (int i = codigo.size() - 1 ; i >= 0 ; i--)
-	{
-		if (codigo[i].substr(0,3) == "~if" || codigo[i].substr(0,5) == "~else")
-			coloca_endereco(codigo[i].substr(1), i, posicoes_labels_finais, codigo, false);
-			
-		else if (codigo[i].substr(0,6) == "~while" || codigo[i].substr(0,4) == "~for")
-			coloca_endereco(codigo[i].substr(1), i, posicoes_labels_finais, codigo, true);
-	}
-	
-	// Remove os marcadores finais
-	
-	for (int i = posicoes_labels_finais.size() - 1 ; i >= 0 ; i--)
-		codigo.erase(codigo.begin() + posicoes_labels_finais[i]);
 	
 }
 
