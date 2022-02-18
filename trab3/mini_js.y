@@ -15,17 +15,24 @@ struct Atributos {
   int linha;
   bool declarada_let;
   bool e_const;
-  bool incremento;
+  bool incremento = false;
+  bool e_func;
+  int num_args;
 };
 
 #define YYSTYPE Atributos
 
 vector< map<string, Atributos> > escopos;
 map<string, int> posicoes_labels_iniciais;
+vector<string> codigo_funcoes;
+map<string, bool> funcao_tem_retorno;
+vector<int> inicio_funcao; // Guarda o começo de cada função para troca no label
 int label_if = 1;
 int label_else = 1;
 int label_for = 1;
 int label_while = 1;
+int label_func = 1;
+bool em_funcao = false;
 
 int yylex();
 int yyparse();
@@ -39,7 +46,7 @@ vector<string> concatena_vetor(vector<string> v1, vector<string> v2);
 void gera_codigo(vector<string> codigo);
 string gera_label_inicial(string nome, int label);
 string gera_label_final(string nome, int label);
-void resolve_enderecos(vector<string> &codigo);
+void resolve_enderecos(vector<string> &codigo, int tamanho_vetor_codigo);
 
 extern int linha;
 extern int ultimo_token;
@@ -49,21 +56,37 @@ string ultimo_tipo_declarado; // Referencial para declarações, em caso de have
 %}
 
 %token tk_let tk_var tk_const tk_int tk_float tk_str tk_str2 tk_id tk_ponto tk_igual tk_incremento tk_incremento_um tk_diferente
-%token tk_if tk_for tk_while tk_else tk_func
+%token tk_if tk_for tk_while tk_else tk_func tk_return
 // Start indica o símbolo inicial da gramática
 %start FIM
 
 %%
 
 
-FIM : S {$1.c.push_back("."); resolve_enderecos($1.c); gera_codigo($1.c);};
+FIM : S {$1.c.push_back("."); int tam_vetor_codigo = $1.c.size(); $1.c = concatena_vetor($1.c, codigo_funcoes); resolve_enderecos($1.c, tam_vetor_codigo); gera_codigo($1.c);};
 
 S :  CMD S {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; } 
 	| CMD ;
 
 CMD : declaracao_const';' {$$ = $1;  $1.c.clear();}
-	| declaracao ';' { $$ = $1; $1.c.clear();}
-	| E  ';' {$1.c.push_back("^");  $$ = $1; $1.c.clear();}
+	| declaracao ';' { $1.c.push_back($1.e);
+				$1.c.push_back($1.e); 
+				$1.c.push_back("@");
+				$1.c.push_back("1"); 
+				$1.c.push_back("+");
+				$1.c.push_back("="); 
+				$1.c.push_back("^");
+				$$ = $1; $1.c.clear();}
+	| E  ';' { $1.c.push_back($1.e);
+				$1.c.push_back($1.e); 
+				$1.c.push_back("@");
+				$1.c.push_back("1"); 
+				$1.c.push_back("+");
+				$1.c.push_back("="); 
+				$1.c.push_back("^");
+				$1.c.push_back("^");  $$ = $1; $1.c.clear();}
+	| decl_func {$$ = $1; $1.c.clear();}
+	| retorno_func {if (em_funcao) $$ = $1; else {cout << "Erro : chamada de retorno fora de uma função. " << endl; exit(1);}}
 	| chamada_if {$$ = $1;  $1.c.clear();}
 	| chamada_for {$$ = $1;  $1.c.clear();}
 	| chamada_while {$$ = $1;  $1.c.clear();}
@@ -75,7 +98,7 @@ bloco : '{' ';' '}'
 	| bloco_vazio;
 
 mult_CMD : CMD mult_CMD {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();} 
-		| CMD ;
+		| CMD {$$ = $1; $1.c.clear();};
 
 LVALUE : tk_id {$1.c.push_back($1.e); $$ = $1; };
 
@@ -100,47 +123,33 @@ multi_decl_const : ',' decl_atrib multi_decl_const {$2.c = concatena_vetor($2.c,
 			| /* Vazio */;
 			
 atribuicao : LVALUEPROP {checa_condicao_variavel($1.e); } '=' E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("[=]");  $$ = $1;  $1.c.clear(); $4.c.clear();}
-			| LVALUE {checa_condicao_variavel($1.e);  } '=' E  {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("=");  $$ = $1;   $1.c.clear(); $4.c.clear();}
-			| LVALUE {checa_condicao_variavel($1.e); $1.c.push_back($1.e); $1.c.push_back("@"); } tk_incremento E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("+"); $1.c.push_back("=");  $$ = $1;  $1.c.clear(); $4.c.clear();}
+			| LVALUE {checa_condicao_variavel($1.e);  } '=' E  {$1.c = concatena_vetor($1.c, $4.c); if ($4.c[0] != "{}") $1.c.push_back("=");  $$ = $1;   $1.c.clear(); $4.c.clear();}
+			| LVALUE {checa_condicao_variavel($1.e); $1.c.push_back($1.e); $1.c.push_back("@"); } tk_incremento E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("+"); if ($4.c[0] != "{}") $1.c.push_back("=");  $$ = $1;  $1.c.clear(); $4.c.clear();}
 			| LVALUEPROP { checa_condicao_variavel($1.e); $1.c = concatena_vetor($1.c, $1.c); $1.c.push_back("[@]");} tk_incremento E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("+"); $1.c.push_back("[=]");  $$ = $1;  $1.c.clear(); $4.c.clear();};
 
-decl_atrib : LVALUE {declara_variavel($1.e, linha, ultimo_tipo_declarado); $1.c.push_back("&"); $1.c.push_back($1.e);} '=' E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("="); $1.c.push_back("^"); $$ = $1;  $1.c.clear(); $4.c.clear();};
+decl_atrib : LVALUE {declara_variavel($1.e, linha, ultimo_tipo_declarado); $1.c.push_back("&"); $1.c.push_back($1.e);} '=' E {$1.c = concatena_vetor($1.c, $4.c); if ($4.c[0] != "{}") $1.c.push_back("="); $1.c.push_back("^"); $$ = $1;  $1.c.clear(); $4.c.clear();};
 			
 E : '!'E {$2.c.push_back("!"); $$ = $2; $2.c.clear();} 
 	| 	F 
 		{
-			if ($1.incremento == true)
-			{
-				$1.c.push_back($1.e);
-				$1.c.push_back($1.e); 
-				$1.c.push_back("@");
-				$1.c.push_back("1"); 
-				$1.c.push_back("+");
-				$1.c.push_back("="); 
-				$1.c.push_back("^");
-				$$ = $1;
-			}
-			else
-			{
-				$$ = $1;
-			}
+			$$ = $1;
 			$1.c.clear();
 		} | atribuicao {$$ = $1; $1.c.clear();};
 
-F : F '|' '|' G {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("||"); $$ = $1;} 
-			| F '&''&' G {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("&&"); $$ = $1;} 
+F : F '|' '|' G {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("||"); $$ = $1; $4.c.clear();} 
+			| F '&''&' G {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("&&"); $$ = $1; $4.c.clear();} 
 			| G ;
 
-G : G '<' H {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("<"); $$ = $1;} 
-			| G '>' H {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back(">"); $$ = $1;} 
-			| G '>''=' H {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back(">="); $$ = $1;} 
-			| G '<''=' H {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("<="); $$ = $1;} 
-			| G tk_igual H {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("=="); $$ = $1;} 
-			| G tk_diferente H {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("!="); $$ = $1;} 
+G : G '<' H {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("<"); $$ = $1; $3.c.clear();} 
+			| G '>' H {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back(">"); $$ = $1; $3.c.clear();} 
+			| G '>''=' H {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back(">="); $$ = $1; $4.c.clear();} 
+			| G '<''=' H {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("<="); $$ = $1; $4.c.clear();} 
+			| G tk_igual H {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("=="); $$ = $1; $3.c.clear();} 
+			| G tk_diferente H {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("!="); $$ = $1; $3.c.clear();} 
 			| H;
 
-H : H '+' I {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("+"); $$ = $1; } 
-			| H '-' I {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("-"); $$ = $1;}
+H : H '+' I {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("+"); $$ = $1; $3.c.clear();} 
+			| H '-' I {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("-"); $$ = $1; $3.c.clear();}
 			| I;
 
 I : I '*' J {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("*"); $$ = $1;} 
@@ -151,20 +160,28 @@ J : '+'K {$$ = $2;}
 			| '-'K { $1.c.push_back("0"); $1.c = concatena_vetor($1.c, $2.c); $1.c.push_back("-"); $$ = $1; } 
 			| K ;
 
-K : LVALUE {checa_condicao_variavel($1.e); $1.c.push_back("@"); $1.incremento = false; $$ = $1; }
-			| tk_int {$1.c.push_back($1.e); $1.incremento = false; $$ = $1; } 
-			| tk_float {$1.c.push_back($1.e); $1.incremento = false; $$ = $1; } 
-			| tk_str {$1.c.push_back($1.e); $1.incremento = false; $$ = $1; } 
-			| tk_str2 {$1.c.push_back($1.e); $1.incremento = false; $$ = $1; } 
+K : LVALUE {checa_condicao_variavel($1.e); $1.c.push_back("@");  $$ = $1; }
+			| tk_int {$1.c.push_back($1.e);  $$ = $1; } 
+			| tk_float {$1.c.push_back($1.e);  $$ = $1; } 
+			| tk_str {$1.c.push_back($1.e); $$ = $1; } 
+			| tk_str2 {$1.c.push_back($1.e); $$ = $1; } 
 			| '('E')' {$$ = $2; } 
-			| LVALUEPROP {checa_condicao_variavel($1.e); $1.c.push_back("[@]"); $1.incremento = false; $$ = $1; }
+			| LVALUEPROP {checa_condicao_variavel($1.e); $1.c.push_back("[@]"); $$ = $1; }
+			| Objetos {$$ = $1; }
+			| chamada_funcao {em_funcao = true; $$ = $1;}
 			| LVALUE tk_incremento_um {checa_condicao_variavel($1.e); $1.c.push_back("@"); $1.incremento = true; $$ = $1; }
-			| Objetos {$$ = $1; };
+			| LVALUEPROP tk_incremento_um {checa_condicao_variavel($1.e); $1.c.push_back("[@]"); $1.incremento = true; $$ = $1; }
+			| chamada_funcao tk_incremento_um {$1.incremento = true; $$ = $1;};
 			
 bloco_vazio : '{' '}';
 
 Objetos : '['']' {$2.c.push_back("[]"); $$ = $2;}
-			| bloco_vazio {$1.c.push_back("{}"); $$ = $1; };
+		| bloco_vazio {$1.c.push_back("{}"); $1.c.push_back("="); $$ = $1; }
+		| '{' {} args_dict '}' {$1.c.push_back("{}"); $1.c.push_back("="); $1.c = concatena_vetor($1.c, $3.c); $$ = $1; };
+		
+args_dict :	LVALUE ':' E mult_args_dict {$1.c = concatena_vetor($1.c, $3.c); $1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("[=]"); $$ = $1;};
+
+mult_args_dict :	',' LVALUE ':' E mult_args_dict {$2.c = concatena_vetor($2.c, $4.c); $2.c = concatena_vetor($2.c, $5.c); $2.c.push_back("[=]"); $$ = $2; } | /* Vazio */ ;
 			
 /*
 
@@ -194,6 +211,80 @@ multi_atrib_dict : LVALUEPROP '=' multi_atrib_dict
 			| LVALUEPROP tk_incremento multi_atrib_dict 
 			| E;
 */
+
+decl_func : tk_func LVALUE {
+				declara_variavel($2.e, linha, "func");
+				cria_escopo();
+				$1.c.push_back($2.e);
+				$1.c.push_back("&");
+				$1.c.push_back($2.e);
+				$1.c.push_back("{}");
+				$1.c.push_back("=");
+				$1.c.push_back("'&funcao'");
+				
+				string label = ";";
+				$1.c.push_back(label + "func" + "_" + to_string(label_func));
+				$1.c.push_back("[=]");
+				$1.c.push_back("^");
+				
+			} '(' func_args ')' {ultimo_token = -1;} '{' 
+									
+									{
+										
+										inicio_funcao.push_back(inicio_funcao.size());
+										int args = 0;
+										
+										for (string arg : $5.c)
+										{										
+											declara_variavel(arg, linha, "let");
+											codigo_funcoes.push_back(arg);
+											codigo_funcoes.push_back("&");
+											codigo_funcoes.push_back(arg);
+											codigo_funcoes.push_back("arguments");
+											codigo_funcoes.push_back("@");
+											codigo_funcoes.push_back(to_string(args));
+											codigo_funcoes.push_back("[@]");
+											codigo_funcoes.push_back("=");
+											codigo_funcoes.push_back("^");
+											args++;							
+										}									
+									}
+									
+									
+									mult_CMD
+									{
+										codigo_funcoes = concatena_vetor(codigo_funcoes, $10.c);
+									}						 	
+									 
+								'}'
+								
+								{
+									//for (string exp : $12.c)
+										//codigo_funcoes.push_back(exp);
+										
+									codigo_funcoes.push_back("'&retorno'");
+									codigo_funcoes.push_back("@");
+									codigo_funcoes.push_back("~");
+										
+									deleta_escopo();
+									$$ = $1;
+									$1.c.clear();
+									$2.c.clear();
+									$5.c.clear();
+									$10.c.clear();
+								};
+
+func_args : LVALUE mult_func_args {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();} | ;
+
+mult_func_args : ',' LVALUE mult_func_args { $2.c = concatena_vetor($2.c, $3.c); $$ = $2; $2.c.clear(); $3.c.clear();} | /* Vazio */;
+
+retorno_func : tk_return E';' {$$ = $2; $2.c.clear();};
+
+chamada_funcao : LVALUE'(' func_args_chamada ')' {em_funcao = false; $2.c = concatena_vetor($2.c, $3.c); $2.c.push_back(to_string($3.num_args)); $2.c.push_back($1.e); $2.c.push_back("@"); $2.c.push_back("$"); $$ = $2; $2.c.clear(); $3.c.clear();};
+
+func_args_chamada : E {$1.num_args = 1;} mult_func_args_chamada {$1.num_args += $3.num_args; $1.c = concatena_vetor($1.c, $3.c); $$ = $1; $1.c.clear(); $3.c.clear();} | ;
+
+mult_func_args_chamada : ',' E {$2.num_args = 1;} mult_func_args_chamada {$2.num_args += $4.num_args; $2.c = concatena_vetor($2.c, $4.c); $$ = $2; $2.c.clear(); $4.c.clear();} | /* Vazio */ ;
 
 chamada_if:  tk_if '(' E ')' 
 			{
@@ -368,8 +459,11 @@ void checa_condicao_variavel(string nome)
 				
 				exit(1);
 			}
+			
+			return;
 		}
 	}
+	
 	
 	if (escopo.count(nome) == 0)
 	{
@@ -391,6 +485,13 @@ void declara_variavel(string nome, int linha, string tipo_declaracao)
 	if (ultimo_escopo->count(nome) != 0)
 	{
 		Atributos a = (*ultimo_escopo)[nome];
+		
+		if (a.e_func)
+		{
+			string erro = "Erro : " + nome + " declarado previamente como uma função.";
+			cout << erro << endl;
+			exit(1);
+		}
 			
 		if (a.declarada_let)
 		{
@@ -410,18 +511,28 @@ void declara_variavel(string nome, int linha, string tipo_declaracao)
 	{					
 		atributos.declarada_let = true;
 		atributos.e_const = false;
+		atributos.e_func = false;
 	}
 	
 	else if (tipo_declaracao == "var")
 	{
 		atributos.declarada_let = false;
 		atributos.e_const = false;
+		atributos.e_func = false;
 	}
 	
 	else if (tipo_declaracao == "const")
 	{
 		atributos.declarada_let = true;
 		atributos.e_const = true;
+		atributos.e_func = false;
+	}
+	
+	else if (tipo_declaracao == "func")
+	{
+		atributos.declarada_let = true;
+		atributos.e_const = true;
+		atributos.e_func = true;
 	}
 	
 	ultimo_escopo->insert({nome, atributos});
@@ -483,8 +594,9 @@ vector<string> concatena_vetor(vector<string> v1, vector<string> v2)
 	return temp;
 }
 
-void resolve_enderecos(vector<string> &codigo)
+void resolve_enderecos(vector<string> &codigo, int tamanho_vetor_codigo)
 {
+	int funcoes_mapeadas = 0;
 	for (int i = 0 ; i < codigo.size() ; i++)
 	{
 		if (codigo[i][0] == '%')
@@ -501,6 +613,9 @@ void resolve_enderecos(vector<string> &codigo)
 				codigo[i] = to_string(i + offset);
 			}
 		}
+		
+		else if (codigo[i][0] == ';')
+			codigo[i] = to_string(tamanho_vetor_codigo + inicio_funcao[funcoes_mapeadas++]);
 	}
 	
 }

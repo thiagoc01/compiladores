@@ -25,6 +25,8 @@ ELSE	"else"
 
 FUNCTION "function"
 
+RETURN	"return"
+
 DIGITO  [0-9]
 
 LETRA   [A-Za-z_]
@@ -43,7 +45,7 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 %%
 
-<<EOF>>	{unput(EOF); if (ultimo_token != ';') return ';';}
+<<EOF>>	{unput(EOF); if (ultimo_token != ';' && ultimo_token != -1) return ';';}
 
 ";"[\n \r\t;]*	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; if (ultimo_token != ';') {ultimo_token = ';'; return ';';}}
 
@@ -74,6 +76,8 @@ NLPOSS	({LET}|{VAR}|{CONST})
 {WHILE}	{ultimo_token = tk_while; return tk_while;}
 
 {FUNCTION}	{ultimo_token = tk_func; return tk_func;}
+
+{RETURN}	{ultimo_token = tk_return; return tk_return;}
 
 {INT}	{ultimo_token = tk_int; yylval.e = yytext; 
 	  return tk_int; }
