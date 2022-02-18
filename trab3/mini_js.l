@@ -23,6 +23,8 @@ WHILE	"while"
 
 ELSE	"else"
 
+FUNCTION "function"
+
 DIGITO  [0-9]
 
 LETRA   [A-Za-z_]
@@ -41,6 +43,8 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 %%
 
+<<EOF>>	{unput(EOF); if (ultimo_token != ';') return ';';}
+
 ";"[\n \r\t;]*	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; if (ultimo_token != ';') {ultimo_token = ';'; return ';';}}
 
 "{"[\n \t\r;]*';'[\n \t\r;]*"}"	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; ultimo_token = ';'; return ';';}
@@ -49,7 +53,7 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 "\n"/{WS}*({NLPOSS}){WS}*	{linha++; if (ultimo_token != ';'){ if (ultimo_token != -1) { ultimo_token = ';'; return ';';}}}
 
-"\n"/{WS}*({ID}|{INT}|{FLOAT}|{STRING}|{STRING2}|"}"){WS}*	{linha++; if (ultimo_token == tk_id || ultimo_token == tk_int || ultimo_token == tk_float || ultimo_token == tk_str || ultimo_token == tk_str2 || ultimo_token == ')' || ultimo_token == ']') {ultimo_token = ';';return ';'; }}
+"\n"/{WS}*({ID}|{INT}|{FLOAT}|{STRING}|{STRING2}|"}"|"{"){WS}*	{linha++; if (ultimo_token == tk_id || ultimo_token == tk_int || ultimo_token == tk_float || ultimo_token == tk_str || ultimo_token == tk_str2 || ultimo_token == ')' || ultimo_token == ']' || ultimo_token == '}') {ultimo_token = ';';return ';'; }}
 
 {WS}    {if (*yytext == '\n') linha++; }
 
@@ -68,6 +72,8 @@ NLPOSS	({LET}|{VAR}|{CONST})
 {FOR}	{ultimo_token = tk_for; return tk_for;}
 
 {WHILE}	{ultimo_token = tk_while; return tk_while;}
+
+{FUNCTION}	{ultimo_token = tk_func; return tk_func;}
 
 {INT}	{ultimo_token = tk_int; yylval.e = yytext; 
 	  return tk_int; }

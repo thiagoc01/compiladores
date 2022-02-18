@@ -49,7 +49,7 @@ string ultimo_tipo_declarado; // Referencial para declarações, em caso de have
 %}
 
 %token tk_let tk_var tk_const tk_int tk_float tk_str tk_str2 tk_id tk_ponto tk_igual tk_incremento tk_incremento_um tk_diferente
-%token tk_if tk_for tk_while tk_else
+%token tk_if tk_for tk_while tk_else tk_func
 // Start indica o símbolo inicial da gramática
 %start FIM
 
@@ -71,7 +71,7 @@ CMD : declaracao_const';' {$$ = $1;  $1.c.clear();}
 	
 	
 bloco : '{' ';' '}'
-	| '{' {cria_escopo();} mult_CMD  '}' {deleta_escopo(); $$ = $3; $3.c.clear();}
+	| '{' {cria_escopo();} mult_CMD  '}' {ultimo_token = -1; deleta_escopo(); $$ = $3; $3.c.clear();}
 	| bloco_vazio;
 
 mult_CMD : CMD mult_CMD {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();} 
