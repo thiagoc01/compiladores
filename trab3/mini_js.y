@@ -15,7 +15,6 @@ struct Atributos {
   int linha;
   bool declarada_let;
   bool e_const;
-  bool incremento = false;
   bool e_func;
   int num_args;
 };
@@ -27,12 +26,13 @@ map<string, int> posicoes_labels_iniciais;
 vector<string> codigo_funcoes;
 map<string, bool> funcao_tem_retorno;
 vector<int> inicio_funcao; // Guarda o começo de cada função para troca no label
+vector<string> incremento;
 int label_if = 1;
 int label_else = 1;
 int label_for = 1;
 int label_while = 1;
 int label_func = 1;
-bool em_funcao = false;
+int escopo_funcao = 0;
 
 int yylex();
 int yyparse();
@@ -46,6 +46,7 @@ vector<string> concatena_vetor(vector<string> v1, vector<string> v2);
 void gera_codigo(vector<string> codigo);
 string gera_label_inicial(string nome, int label);
 string gera_label_final(string nome, int label);
+vector<string> realiza_pos_incremento(int posicao, bool obj);
 void resolve_enderecos(vector<string> &codigo, int tamanho_vetor_codigo);
 
 extern int linha;
@@ -68,25 +69,61 @@ FIM : S {$1.c.push_back("."); int tam_vetor_codigo = $1.c.size(); $1.c = concate
 S :  CMD S {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; } 
 	| CMD ;
 
-CMD : declaracao_const';' {$$ = $1;  $1.c.clear();}
-	| declaracao ';' { $1.c.push_back($1.e);
-				$1.c.push_back($1.e); 
-				$1.c.push_back("@");
-				$1.c.push_back("1"); 
-				$1.c.push_back("+");
-				$1.c.push_back("="); 
-				$1.c.push_back("^");
-				$$ = $1; $1.c.clear();}
-	| E  ';' { $1.c.push_back($1.e);
-				$1.c.push_back($1.e); 
-				$1.c.push_back("@");
-				$1.c.push_back("1"); 
-				$1.c.push_back("+");
-				$1.c.push_back("="); 
-				$1.c.push_back("^");
-				$1.c.push_back("^");  $$ = $1; $1.c.clear();}
+CMD : declaracao_const';' {
+				if (incremento.size())
+				{
+					for (int i = 0 ; i < incremento.size() ; i++)
+					{
+						if (incremento[i].find("[@]") != string::npos)
+						{
+							incremento[i] = incremento[i].substr(0, incremento[i].size() - 3);
+							$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, true));
+						}
+						else
+							$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, false));		
+					}
+				}
+				$$ = $1;
+				$1.c.clear();
+			}
+	| declaracao ';'{ 
+	
+				if (incremento.size())
+				{
+					for (int i = 0 ; i < incremento.size() ; i++)
+					{
+						if (incremento[i].find("[@]") != string::npos)
+						{
+							incremento[i] = incremento[i].substr(0, incremento[i].size() - 3);
+							$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, true));
+						}
+						else
+							$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, false));		
+					}
+				}
+				$$ = $1;
+				$1.c.clear();
+			}
+	| E  ';' { 
+			if (incremento.size())
+			{
+				for (int i = 0 ; i < incremento.size() ; i++)
+				{
+					if (incremento[i].find("[@]") != string::npos)
+					{
+						incremento[i] = incremento[i].substr(0, incremento[i].size() - 3);
+						$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, true));
+					}
+					else
+						$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, false));		
+				}
+			}
+			
+			$1.c.push_back("^"); 
+			$$ = $1; $1.c.clear();
+		}			
 	| decl_func {$$ = $1; $1.c.clear();}
-	| retorno_func {if (em_funcao) $$ = $1; else {cout << "Erro : chamada de retorno fora de uma função. " << endl; exit(1);}}
+	| retorno_func {if (escopo_funcao) $$ = $1; else {cout << "Erro : chamada de retorno fora de uma função. " << endl; exit(1);}}
 	| chamada_if {$$ = $1;  $1.c.clear();}
 	| chamada_for {$$ = $1;  $1.c.clear();}
 	| chamada_while {$$ = $1;  $1.c.clear();}
@@ -122,7 +159,7 @@ declaracao_const : tk_const {ultimo_tipo_declarado = "const";} decl_atrib {decla
 multi_decl_const : ',' decl_atrib multi_decl_const {$2.c = concatena_vetor($2.c, $3.c); $$ = $2;  $3.c.clear();} 
 			| /* Vazio */;
 			
-atribuicao : LVALUEPROP {checa_condicao_variavel($1.e); } '=' E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("[=]");  $$ = $1;  $1.c.clear(); $4.c.clear();}
+atribuicao : LVALUEPROP {checa_condicao_variavel($1.e); } '=' E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("[=]"); $$ = $1;  $1.c.clear(); $4.c.clear();}
 			| LVALUE {checa_condicao_variavel($1.e);  } '=' E  {$1.c = concatena_vetor($1.c, $4.c); if ($4.c[0] != "{}") $1.c.push_back("=");  $$ = $1;   $1.c.clear(); $4.c.clear();}
 			| LVALUE {checa_condicao_variavel($1.e); $1.c.push_back($1.e); $1.c.push_back("@"); } tk_incremento E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("+"); if ($4.c[0] != "{}") $1.c.push_back("=");  $$ = $1;  $1.c.clear(); $4.c.clear();}
 			| LVALUEPROP { checa_condicao_variavel($1.e); $1.c = concatena_vetor($1.c, $1.c); $1.c.push_back("[@]");} tk_incremento E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("+"); $1.c.push_back("[=]");  $$ = $1;  $1.c.clear(); $4.c.clear();};
@@ -168,10 +205,23 @@ K : LVALUE {checa_condicao_variavel($1.e); $1.c.push_back("@");  $$ = $1; }
 			| '('E')' {$$ = $2; } 
 			| LVALUEPROP {checa_condicao_variavel($1.e); $1.c.push_back("[@]"); $$ = $1; }
 			| Objetos {$$ = $1; }
-			| chamada_funcao {em_funcao = true; $$ = $1;}
-			| LVALUE tk_incremento_um {checa_condicao_variavel($1.e); $1.c.push_back("@"); $1.incremento = true; $$ = $1; }
-			| LVALUEPROP tk_incremento_um {checa_condicao_variavel($1.e); $1.c.push_back("[@]"); $1.incremento = true; $$ = $1; }
-			| chamada_funcao tk_incremento_um {$1.incremento = true; $$ = $1;};
+			| chamada_funcao
+			| LVALUE tk_incremento_um {checa_condicao_variavel($1.e); $1.c.push_back("@"); incremento.push_back($1.e); $$ = $1; }
+			| LVALUEPROP tk_incremento_um 	{
+								checa_condicao_variavel($1.e);
+								$1.c.push_back("[@]");
+								vector<string> pos = $1.c;
+								string temp;
+								
+								for (int i = 0 ; i < pos.size() ; i++)
+								{
+									temp += pos[i];
+									temp += " ";
+								}
+									
+								incremento.push_back(temp);
+								$$ = $1; 
+							} ;
 			
 bloco_vazio : '{' '}';
 
@@ -179,9 +229,9 @@ Objetos : '['']' {$2.c.push_back("[]"); $$ = $2;}
 		| bloco_vazio {$1.c.push_back("{}"); $1.c.push_back("="); $$ = $1; }
 		| '{' {} args_dict '}' {$1.c.push_back("{}"); $1.c.push_back("="); $1.c = concatena_vetor($1.c, $3.c); $$ = $1; };
 		
-args_dict :	LVALUE ':' E mult_args_dict {$1.c = concatena_vetor($1.c, $3.c); $1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("[=]"); $$ = $1;};
+args_dict :	LVALUE ':' E mult_args_dict {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("[=]"); $1.c = concatena_vetor($1.c, $4.c);  $$ = $1; $1.c.clear(); $4.c.clear();};
 
-mult_args_dict :	',' LVALUE ':' E mult_args_dict {$2.c = concatena_vetor($2.c, $4.c); $2.c = concatena_vetor($2.c, $5.c); $2.c.push_back("[=]"); $$ = $2; } | /* Vazio */ ;
+mult_args_dict :	',' LVALUE ':' E mult_args_dict {$2.c = concatena_vetor($2.c, $4.c); $2.c.push_back("[=]"); $2.c = concatena_vetor($2.c, $5.c);  $$ = $2; $2.c.clear(); $5.c.clear();} | /* Vazio */ ;
 			
 /*
 
@@ -214,6 +264,7 @@ multi_atrib_dict : LVALUEPROP '=' multi_atrib_dict
 
 decl_func : tk_func LVALUE {
 				declara_variavel($2.e, linha, "func");
+				escopo_funcao++;
 				cria_escopo();
 				$1.c.push_back($2.e);
 				$1.c.push_back("&");
@@ -231,7 +282,7 @@ decl_func : tk_func LVALUE {
 									
 									{
 										
-										inicio_funcao.push_back(inicio_funcao.size());
+										inicio_funcao.push_back(codigo_funcoes.size());
 										int args = 0;
 										
 										for (string arg : $5.c)
@@ -258,14 +309,9 @@ decl_func : tk_func LVALUE {
 									 
 								'}'
 								
-								{
-									//for (string exp : $12.c)
-										//codigo_funcoes.push_back(exp);
-										
-									codigo_funcoes.push_back("'&retorno'");
-									codigo_funcoes.push_back("@");
-									codigo_funcoes.push_back("~");
-										
+								{										
+									
+									escopo_funcao--;
 									deleta_escopo();
 									$$ = $1;
 									$1.c.clear();
@@ -278,13 +324,13 @@ func_args : LVALUE mult_func_args {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; 
 
 mult_func_args : ',' LVALUE mult_func_args { $2.c = concatena_vetor($2.c, $3.c); $$ = $2; $2.c.clear(); $3.c.clear();} | /* Vazio */;
 
-retorno_func : tk_return E';' {$$ = $2; $2.c.clear();};
+retorno_func : tk_return E';' {$2.c.push_back("'&retorno'"); $2.c.push_back("@"); $2.c.push_back("~"); $$ = $2; $2.c.clear();};
 
-chamada_funcao : LVALUE'(' func_args_chamada ')' {em_funcao = false; $2.c = concatena_vetor($2.c, $3.c); $2.c.push_back(to_string($3.num_args)); $2.c.push_back($1.e); $2.c.push_back("@"); $2.c.push_back("$"); $$ = $2; $2.c.clear(); $3.c.clear();};
+chamada_funcao : LVALUE'(' func_args_chamada ')' {$3.c.push_back(to_string($3.num_args)); $3.c.push_back($1.e); $3.c.push_back("@"); $3.c.push_back("$"); $$ = $3; $3.c.clear(); $3.num_args = 0;};
 
-func_args_chamada : E {$1.num_args = 1;} mult_func_args_chamada {$1.num_args += $3.num_args; $1.c = concatena_vetor($1.c, $3.c); $$ = $1; $1.c.clear(); $3.c.clear();} | ;
+func_args_chamada : E {$1.num_args = 1;} mult_func_args_chamada {$1.num_args += $3.num_args; $1.c = concatena_vetor($1.c, $3.c); $$ = $1; $1.c.clear(); $3.c.clear(); $1.num_args = 0; $3.num_args = 0;} | ;
 
-mult_func_args_chamada : ',' E {$2.num_args = 1;} mult_func_args_chamada {$2.num_args += $4.num_args; $2.c = concatena_vetor($2.c, $4.c); $$ = $2; $2.c.clear(); $4.c.clear();} | /* Vazio */ ;
+mult_func_args_chamada : ',' E {$2.num_args = 1;} mult_func_args_chamada {$2.num_args += $4.num_args; $2.c = concatena_vetor($2.c, $4.c); $$ = $2; $2.c.clear(); $4.c.clear(); $2.num_args = 0; $4.num_args = 0;} | /* Vazio */ ;
 
 chamada_if:  tk_if '(' E ')' 
 			{
@@ -620,6 +666,47 @@ void resolve_enderecos(vector<string> &codigo, int tamanho_vetor_codigo)
 	
 }
 
+vector<string> realiza_pos_incremento(int posicao, bool obj)
+{
+	vector<string> ret;
+	
+	if (obj)
+	{
+		string temp = incremento[posicao];
+
+		int pos = 0;
+		string var;
+		
+		while ((pos = temp.find(" ")) != string::npos) 
+		{
+		    var = temp.substr(0, pos);
+		    ret.push_back(var);
+		    temp.erase(0, pos + 1);
+		}
+		
+		ret = concatena_vetor(ret, ret);
+		ret.push_back("[@]");
+		ret.push_back("1");
+		ret.push_back("+");
+		ret.push_back("[=]");
+		ret.push_back("^");
+		incremento.erase(incremento.begin() + posicao);
+	}
+	
+	else
+	{
+		ret.push_back(incremento[posicao]);
+		ret.push_back(incremento[posicao]); 
+		ret.push_back("@");
+		ret.push_back("1"); 
+		ret.push_back("+");
+		ret.push_back("="); 
+		ret.push_back("^");
+		incremento.erase(incremento.begin() + posicao);
+	}
+	
+	return ret;
+}
 int main( int argc, char* argv[] ) {
 
 	map <string, Atributos> global;
