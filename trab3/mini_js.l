@@ -1,7 +1,7 @@
 %{
 
 int linha = 1;
-int ultimo_token = -2;
+int ultimo_token = -1;
 
 %}
 
