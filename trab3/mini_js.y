@@ -33,7 +33,8 @@ int label_for = 1;
 int label_while = 1;
 int label_func = 1;
 int escopo_funcao = 0;
-
+bool obj;
+int num_args_vec = 0;
 int yylex();
 int yyparse();
 void yyerror(const char *);
@@ -121,12 +122,12 @@ declaracao_const : tk_const {ultimo_tipo_declarado = "const";} decl_atrib multi_
 multi_decl_const : ',' decl_atrib multi_decl_const {$2.c = concatena_vetor($2.c, $3.c); $$ = $2; $2.c.clear(); $3.c.clear();} 
 			| /* Vazio */;
 			
-atribuicao : LVALUEPROP {checa_condicao_variavel($1.e, true); } '=' E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("[=]"); $$ = $1;  $1.c.clear(); $4.c.clear();}
-			| LVALUE {checa_condicao_variavel($1.e, false);  ultimo_obj = $1.e;} '=' E  {$1.c = concatena_vetor($1.c, $4.c); if ($4.c[0] != "{}") $1.c.push_back("=");  $$ = $1;   $1.c.clear(); $4.c.clear();}
-			| LVALUE {checa_condicao_variavel($1.e, false); $1.c.push_back($1.e); $1.c.push_back("@"); ultimo_obj = $1.e;} tk_incremento E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("+"); if ($4.c[0] != "{}") $1.c.push_back("=");  $$ = $1;  $1.c.clear(); $4.c.clear();}
-			| LVALUEPROP { checa_condicao_variavel($1.e, true); $1.c = concatena_vetor($1.c, $1.c); $1.c.push_back("[@]");} tk_incremento E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("+"); $1.c.push_back("[=]");  $$ = $1;  $1.c.clear(); $4.c.clear();};
+atribuicao : LVALUEPROP {checa_condicao_variavel($1.e, true); obj = true;} '=' E {$1.c = concatena_vetor($1.c, $4.c); if ($4.c[0] != "{}" && $4.c[0] != "[]") $1.c.push_back("[=]"); $$ = $1;  $1.c.clear(); $4.c.clear();}
+			| LVALUE {checa_condicao_variavel($1.e, false);  ultimo_obj = $1.e; obj = false;} '=' E  {$1.c = concatena_vetor($1.c, $4.c); if ($4.c[0] != "{}" && $4.c[0] != "[]") $1.c.push_back("=");  $$ = $1;   $1.c.clear(); $4.c.clear();}
+			| LVALUE {checa_condicao_variavel($1.e, false); $1.c.push_back($1.e); $1.c.push_back("@"); ultimo_obj = $1.e; obj = false;} tk_incremento E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("+"); if ($4.c[0] != "{}" && $4.c[0] != "[]") $1.c.push_back("=");  $$ = $1;  $1.c.clear(); $4.c.clear();}
+			| LVALUEPROP { checa_condicao_variavel($1.e, true); $1.c = concatena_vetor($1.c, $1.c); $1.c.push_back("[@]"); obj = true;} tk_incremento E {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("+"); if ($4.c[0] != "{}" && $4.c[0] != "[]") $1.c.push_back("[=]");  $$ = $1;  $1.c.clear(); $4.c.clear();};
 
-decl_atrib : LVALUE {declara_variavel($1.e, linha, ultimo_tipo_declarado); $1.c.push_back("&"); $1.c.push_back($1.e); ultimo_obj = $1.e;} '=' E {$1.c = concatena_vetor($1.c, $4.c); if ($4.c[0] != "{}") $1.c.push_back("="); $1.c.push_back("^"); $$ = $1;  $1.c.clear(); $4.c.clear();};
+decl_atrib : LVALUE {declara_variavel($1.e, linha, ultimo_tipo_declarado); $1.c.push_back("&"); $1.c.push_back($1.e); ultimo_obj = $1.e; obj = false;} '=' E {$1.c = concatena_vetor($1.c, $4.c); if ($4.c[0] != "{}" && $4.c[0] != "[]") $1.c.push_back("="); $1.c.push_back("^"); $$ = $1;  $1.c.clear(); $4.c.clear();};
 			
 E : '!'E 	{
 		$2.c.push_back("!");
@@ -233,42 +234,19 @@ K : LVALUE {checa_condicao_variavel($1.e, true); $1.c.push_back("@");  $$ = $1;}
 								$$ = $1; 
 							} ;
 
-Objetos : '['']' {$2.c.push_back("[]"); $$ = $2;}
-		| '{' '}' {ultimo_token = '}'; $1.c.push_back("{}"); $1.c.push_back("="); $$ = $1; $1.c.clear();}
-		| tk_abre_obj args_dict '}' {$1.c.push_back("{}"); $1.c.push_back("="); $1.c = concatena_vetor($1.c, $2.c); $1.c.push_back(ultimo_obj); $1.c.push_back("@"); $$ = $1; $1.c.clear(); $2.c.clear();};
+Objetos : '['']' {$2.c.push_back("[]"); if (obj) $2.c.push_back("[=]"); else $2.c.push_back("="); $$ = $2; $2.c.clear();}
+		| '[' args_vect ']' {$1.c.push_back("[]"); if (obj) $1.c.push_back("[=]"); else $1.c.push_back("="); $1.c = concatena_vetor($1.c, $2.c); $1.c.push_back(ultimo_obj); $1.c.push_back("@"); $$ = $1; $1.c.clear(); $2.c.clear();}
+		| '{' '}' {ultimo_token = '}'; $1.c.push_back("{}"); if (obj) $1.c.push_back("[=]"); else $1.c.push_back("="); $$ = $1; $1.c.clear();}
+		| tk_abre_obj args_dict '}' {$1.c.push_back("{}"); if (obj) $1.c.push_back("[=]"); else $1.c.push_back("="); $1.c = concatena_vetor($1.c, $2.c); $1.c.push_back(ultimo_obj); $1.c.push_back("@"); $$ = $1; $1.c.clear(); $2.c.clear();};
 		
 args_dict :	LVALUE ':' E mult_args_dict {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("[=]"); $1.c.push_back("^"); $1.c = concatena_vetor($1.c, $4.c);  $$ = $1; $1.c.clear(); $4.c.clear();$3.c.clear();};
 
+
 mult_args_dict :	',' LVALUE ':' E mult_args_dict {$1.c.push_back(ultimo_obj); $1.c.push_back("@"); $1.c = concatena_vetor($1.c, $2.c); $1.c = concatena_vetor($1.c, $4.c);  $1.c.push_back("[=]"); $1.c.push_back("^"); $1.c = concatena_vetor($1.c, $5.c);  $$ = $1; $1.c.clear(); $2.c.clear(); $4.c.clear(); $5.c.clear();} | /* Vazio */ ;
-			
-/*
 
-Para ser implementado quando solicitado
+args_vect : E {num_args_vec++;} mult_args_vect {$2.c = {"0"}; $2.c = concatena_vetor($2.c, $1.c); $2.c.push_back("[=]"); $2.c.push_back("^"); $2.c = concatena_vetor($2.c, $3.c);  $$ = $2; 							$1.c.clear(); $2.c.clear(); $3.c.clear(); num_args_vec = 0; };
 
-args_vetor : E mult_args_vetor {} 
-			| ;
-mult_args_vetor : ',' E mult_args_vetor {}
-			| ;
-
-
-args_dict : LVALUE ':' RVALUE_dict mult_args_dict 
-			| ;
-
-mult_args_dict : ',' LVALUE ':' RVALUE_dict mult_args_dict 
-			| ;
-
-RVALUE_dict : LVALUEPROP '=' multi_atrib_dict 
-			| LVALUE '=' multi_atrib_dict 
-			| LVALUE tk_incremento multi_atrib_dict 
-			| LVALUEPROP tk_incremento multi_atrib_dict 
-			| E;
-
-multi_atrib_dict : LVALUEPROP '=' multi_atrib_dict 
-			| LVALUE '=' multi_atrib_dict 
-			| LVALUE tk_incremento multi_atrib_dict 
-			| LVALUEPROP tk_incremento multi_atrib_dict 
-			| E;
-*/
+mult_args_vect : ',' E {$1.c.push_back(ultimo_obj); $1.c.push_back("@"); $1.c.push_back(to_string(num_args_vec)); $1.c = concatena_vetor($1.c, $2.c); $1.c.push_back("[=]"); $1.c.push_back("^"); num_args_vec++;} mult_args_vect {$1.c = concatena_vetor($1.c, $4.c); $$ = $1; $1.c.clear(); $2.c.clear(); $4.c.clear();} | /* Vazio */;
 
 decl_func : tk_func LVALUE {
 				declara_variavel($2.e, linha, "func");
