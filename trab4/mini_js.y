@@ -59,7 +59,7 @@ string ultimo_tipo_declarado; // Referencial para declarações, em caso de have
 %}
 
 %token tk_let tk_var tk_const tk_int tk_float tk_str tk_str2 tk_id tk_ponto tk_igual tk_incremento tk_incremento_um tk_diferente
-%token tk_if tk_for tk_while tk_else tk_func tk_return	tk_bloco_vazio	tk_abre_obj tk_ASM
+%token tk_if tk_for tk_while tk_else tk_func tk_return	tk_bloco_vazio	tk_abre_obj tk_ASM tk_bool
 // Start indica o símbolo inicial da gramática
 %start FIM
 
@@ -193,7 +193,8 @@ H : H '+' I {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("+"); $$ = $1; $
 			| I;
 
 I : I '*' J {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("*"); $$ = $1; $3.c.clear(); $1.c.clear();} 
-			| I '/' J {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("/"); $$ = $1; $3.c.clear(); $1.c.clear();} 
+			| I '/' J {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("/"); $$ = $1; $3.c.clear(); $1.c.clear();}
+			| I '%' J {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("%"); $$ = $1; $3.c.clear(); $1.c.clear();}
 			| J ;
 			
 J :	'!'J {$2.c.push_back("!"); $$ = $2; $2.c.clear();}
@@ -207,7 +208,8 @@ L : LVALUE {checa_condicao_variavel($1.e, true); $1.c.push_back("@");  $$ = $1;}
 			| tk_int {$1.c.push_back($1.e);  $$ = $1; } 
 			| tk_float {$1.c.push_back($1.e);  $$ = $1; } 
 			| tk_str { $1.c.push_back($1.e); $$ = $1; } 
-			| tk_str2 {$1.c.push_back($1.e); $$ = $1; } 
+			| tk_str2 {$1.c.push_back($1.e); $$ = $1; }
+			| tk_bool {$1.c.push_back($1.e); $$ = $1;}
 			| '('E')' {$$ = $2; } 
 			| LVALUEPROP {checa_condicao_variavel($1.e, true); $1.c.push_back("[@]"); $$ = $1; }
 			| Objetos {$$ = $1; $1.c.clear();}
@@ -366,7 +368,7 @@ chamada_if:  tk_if '(' E ')'
 			};
 
 chamada_else: tk_else {ultimo_token = -1;} CMD {$$ = $3; $3.c.clear();}
-			| ;
+			| /* Vazio */;
 
 chamada_while:	tk_while '(' E ')' 
 		{
@@ -479,41 +481,41 @@ void deleta_escopo()
 
 void checa_condicao_variavel(string nome, bool rvalue)
 {
-	map <string, Atributos> escopo;
-	
-	for (int i = escopos.size() - 1 ; i >= 0 ; i--)
+	if (!escopo_funcao)
 	{
-		escopo = escopos[i];
+		map <string, Atributos> escopo;
 		
-		if (escopo.count(nome) != 0)
+		for (int i = escopos.size() - 1 ; i >= 0 ; i--)
 		{
-			Atributos a = escopo[nome];
+			escopo = escopos[i];
 			
-			if (a.e_const && !escopo_funcao && !rvalue)
+			if (escopo.count(nome) != 0)
 			{
-				string erro = "Erro: tentativa de modificar uma variável constante ('";
-			
-				cout << erro + nome + "').\n";
+				Atributos a = escopo[nome];
 				
-				exit(1);
+				if (a.e_const && !escopo_funcao && !rvalue)
+				{
+					string erro = "Erro: tentativa de modificar uma variável constante ('";
+				
+					cout << erro + nome + "').\n";
+					
+					exit(1);
+				}
+				
+				return;
 			}
-			
-			return;
 		}
-	}
-	
-	
-	if (escopo.count(nome) == 0)
-	{
-		string erro = "Erro: a variável '";
-			
-		cout << erro + nome + "' não foi declarada.\n";
 		
-		exit(1);
-	}
-	
-	
-	
+		
+		if (escopo.count(nome) == 0)
+		{
+			string erro = "Erro: a variável '";
+				
+			cout << erro + nome + "' não foi declarada.\n";
+			
+			exit(1);
+		}
+	}	
 }
 
 void declara_variavel(string nome, int linha, string tipo_declaracao)
@@ -531,7 +533,7 @@ void declara_variavel(string nome, int linha, string tipo_declaracao)
 			exit(1);
 		}
 			
-		if (a.declarada_let)
+		if (a.declarada_let || tipo_declaracao == "let" || tipo_declaracao == "const")
 		{
 			string erro = "Erro: a variável '";
 			cout << erro + a.e + "' já foi declarada na linha " + to_string(a.linha) + ".\n";
@@ -587,7 +589,7 @@ string gera_label_inicial(string nome, int label)
 	else if (nome == "for")
 		label_for++;
 		
-	string ret =  "%";
+	string ret =  ":";
 	return ret + nome + "_" + to_string(label);
 }
 
@@ -602,7 +604,7 @@ string gera_label_final(string nome, int label)
 	else if (nome == "for")
 		label_for--;
 		
-	string ret = "%";
+	string ret = ":";
 	return ret + nome + "_" + to_string(label);
 }
 
@@ -638,7 +640,7 @@ void resolve_enderecos(vector<string> &codigo, int tamanho_vetor_codigo)
 	int funcoes_mapeadas = 0;
 	for (int i = 0 ; i < codigo.size() ; i++)
 	{
-		if (codigo[i][0] == '%')
+		if (codigo[i][0] == ':')
 		{
 			if (codigo[i][1] == 'f' || codigo[i][1] == 'w')
 			{

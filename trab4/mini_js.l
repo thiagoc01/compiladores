@@ -45,6 +45,8 @@ STRING	('([^'\\\n]|\\'|\"|''|\\.)*')|(\"([^"\\\n]|\\\"|'|\\.|\"\")*\")
 
 STRING2	`([^`\\]|\\`|\\.|\\)*`
 
+BOOL	("true"|"false")
+
 NLPOSS	({LET}|{VAR}|{CONST})
 
 %%
@@ -86,7 +88,8 @@ NLPOSS	({LET}|{VAR}|{CONST})
 {RETURN}	{ultimo_token = tk_return; return tk_return;}
 
 {ASM}.*"}"	{
-			string trimada = remove_chars( yytext + 3, "{}" ); 
+			string trimada = yytext + 4;
+			trimada = trimada.substr(0, trimada.size()-1);
 		        yylval.c = gera_vetor_codigo( trimada );
 		        return tk_ASM; 
 		}
@@ -96,6 +99,8 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 {FLOAT}	{ultimo_token = tk_float; yylval.e = yytext; 
 	  return tk_float; }
+	  
+{BOOL}	{ultimo_token = tk_bool; yylval.e = yytext; return tk_bool;}
 
 {STRING}	{ultimo_token = tk_str; yylval.e = yytext;  return tk_str; }
 
@@ -115,44 +120,64 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 %%
 
-string remove_chars(string base, string para_remover)
-{
-	string ret = base;
-	
-	for (int i = 0 ; i < ret.size() ; i++)
-	{
-		for (char d : para_remover)
-		{
-			if (ret[i] == d)
-			{
-				ret.erase(ret.begin() + i);
-				break;
-			}
-		}
-	}
-	
-	return ret;
-}
-
 vector<string> gera_vetor_codigo(string codigo)
 {
 	int pos = 0;
 	vector<string> ret;	
 	string var;
 	
-	while ((pos = codigo.find(" ")) != string::npos) 
+	for (int i = 0 ; i < codigo.size() ; i++)
 	{
-	    var = codigo.substr(0, pos);
-	    ret.push_back(var);
-	    codigo.erase(0, pos + 1);
+		if (codigo[i] == '"')
+		{
+			var += "\"";
+			
+			for (int j = i + 1; j < codigo.size() ; j++)
+			{
+				if (codigo[j] == '"')
+				{
+					var += codigo[j];
+					ret.push_back(var);
+					var = "";
+					i = j + 1;
+					break;
+				}
+				else
+					var += codigo[j];				
+			}
+		}
+		
+		else if (codigo[i] == '\'')
+		{
+			var += "'";
+			for (int j = i + 1; j < codigo.size() ; j++)
+			{
+				if (codigo[j] == '\'')
+				{
+					var += codigo[j];
+					ret.push_back(var);
+					var = "";
+					i = j + 1;
+					break;
+				}
+				else
+					var += codigo[j];				
+			}
+		}
+		
+		else if (codigo[i] == ' ')
+		{
+			ret.push_back(var);
+			var = "";
+		}
+		
+		else
+			var += codigo[i];
 	}
 	
+	
 	if (codigo.size() > 0)
-	{
-	    var = codigo.substr(0);
 	    ret.push_back(var);
-	    codigo.erase(0);
-	}
 	
 	return ret;
 }
