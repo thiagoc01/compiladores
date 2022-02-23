@@ -57,13 +57,15 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 "{"[\n \t\r;]*[;][\n \t\r;]*"}"	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; }
 
-"\n"/{WS}*({NLPOSS}){WS}*	{linha++; if (ultimo_token != ';'){ if (ultimo_token != -1) { ultimo_token = ';'; return ';';}}}
+"\n"/{WS}*({NLPOSS}){WS}*	{linha++;if (ultimo_token != ';'){ if (ultimo_token != -1) { ultimo_token = ';'; return ';';}}}
 
-"\n"/{WS}*({ID}|{INT}|{FLOAT}|{STRING}|{STRING2}|"}"|"{"){WS}*	{linha++; if (ultimo_token == tk_id || ultimo_token == tk_int || ultimo_token == tk_float || ultimo_token == tk_str || ultimo_token == tk_str2 || ultimo_token == ')' || ultimo_token == ']' || ultimo_token == '}') {ultimo_token = ';';return ';'; }}
+"\n"/{WS}*({ID}|{INT}|{FLOAT}|{STRING}|{STRING2}|"}"|"{"){WS}*	{linha++; if (ultimo_token == tk_id || ultimo_token == tk_int || ultimo_token == tk_float || ultimo_token == tk_str || ultimo_token == tk_str2 || ultimo_token == ')' || ultimo_token == ']' || ultimo_token == '}') {ultimo_token = ';';return ';'; } }
 
 "{"/{WS}*{ID}{WS}*":"	{return tk_abre_obj;}
 
 "{"/{WS}*"}"{WS}+	{if (ultimo_token == ';') return tk_bloco_vazio; else{ultimo_token = '{'; return '{';}}
+
+"("/.*")"{WS}*"=>"	{return parentese_args_anon;}
 
 {WS}    {if (*yytext == '\n') linha++; }
 
@@ -115,6 +117,8 @@ NLPOSS	({LET}|{VAR}|{CONST})
 "++"	{ultimo_token = tk_incremento_um ; return tk_incremento_um;}
 
 "=="	{ultimo_token = tk_igual; return tk_igual;}
+
+"=>"	{ultimo_token = tk_oper_seta; return tk_oper_seta;}
 
 .	{if (yytext[0] == ';')ultimo_token = *yytext; return *yytext; }
 

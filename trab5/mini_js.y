@@ -59,7 +59,7 @@ string ultimo_tipo_declarado; // Referencial para declarações, em caso de have
 %}
 
 %token tk_let tk_var tk_const tk_int tk_float tk_str tk_str2 tk_id tk_ponto tk_igual tk_incremento tk_incremento_um tk_diferente
-%token tk_if tk_for tk_while tk_else tk_func tk_return	tk_bloco_vazio	tk_abre_obj tk_ASM tk_bool
+%token tk_if tk_for tk_while tk_else tk_func tk_return	tk_bloco_vazio	tk_abre_obj tk_ASM tk_bool tk_oper_seta parentese_args_anon
 // Start indica o símbolo inicial da gramática
 %start FIM
 
@@ -106,6 +106,10 @@ CMD : declaracao_const';' 	{
 bloco : '{' ';' '}'
 	| '{' {cria_escopo(); $1.c.push_back("<{"); } mult_CMD  '}' {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("}>"); ultimo_token = -1; deleta_escopo(); $$ = $1; $1.c.clear(); $3.c.clear();}
 	| tk_bloco_vazio '}' ;
+	
+bloco_func : '{' ';' '}'
+		| '{' mult_CMD '}' { ultimo_token = -1; $1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();}
+		| tk_bloco_vazio '}' ;
 
 mult_CMD : CMD mult_CMD {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();} 
 		| CMD {$$ = $1; $1.c.clear();};
@@ -174,7 +178,9 @@ E :	F
 				}
 				$$ = $1;
 				$1.c.clear();
-			};
+			}
+	| decl_func_lambda
+	| decl_func;
 
 F : F '|' '|' G {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("||"); $$ = $1; $4.c.clear();} 
 			| F '&''&' G {$1.c = concatena_vetor($1.c, $4.c); $1.c.push_back("&&"); $$ = $1; $4.c.clear();} 
@@ -262,33 +268,11 @@ decl_func : tk_func LVALUE {
 				$1.c.push_back("[=]");
 				$1.c.push_back("^");
 				
-			} '(' func_args ')' {ultimo_token = -1;} '{' 
-									
-									{
-										
-										inicio_funcao.push_back(codigo_funcoes.size());
-										int args = 0;
-										
-										for (string arg : $5.c)
-										{										
-											declara_variavel(arg, linha, "let");
-											codigo_funcoes.push_back(arg);
-											codigo_funcoes.push_back("&");
-											codigo_funcoes.push_back(arg);
-											codigo_funcoes.push_back("arguments");
-											codigo_funcoes.push_back("@");
-											codigo_funcoes.push_back(to_string(args));
-											codigo_funcoes.push_back("[@]");
-											codigo_funcoes.push_back("=");
-											codigo_funcoes.push_back("^");
-											args++;							
-										}									
-									}
-									
-									
+			} '(' func_args ')'	{ultimo_token = -1;}
+								'{'				
 									mult_CMD
 									{
-										codigo_funcoes = concatena_vetor(codigo_funcoes, $10.c);
+										codigo_funcoes = concatena_vetor(codigo_funcoes, $9.c);
 									}						 	
 									 
 								'}'
@@ -305,11 +289,33 @@ decl_func : tk_func LVALUE {
 									$$ = $1;
 									$1.c.clear();
 									$2.c.clear();
-									$5.c.clear();
-									$10.c.clear();
+									$9.c.clear();
 								};
+								
 
-func_args : LVALUE mult_func_args {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();} | ;
+func_args : LVALUE mult_func_args 	{
+							inicio_funcao.push_back(codigo_funcoes.size());
+							int args = 0;
+							vector<string> todos_args = concatena_vetor($1.c, $2.c);
+							
+							for (string arg : todos_args)
+							{										
+								declara_variavel(arg, linha, "let");
+								codigo_funcoes.push_back(arg);
+								codigo_funcoes.push_back("&");
+								codigo_funcoes.push_back(arg);
+								codigo_funcoes.push_back("arguments");
+								codigo_funcoes.push_back("@");
+								codigo_funcoes.push_back(to_string(args));
+								codigo_funcoes.push_back("[@]");
+								codigo_funcoes.push_back("=");
+								codigo_funcoes.push_back("^");
+								args++;							
+							}
+							$$ = $1;
+							$1.c.clear();
+							$2.c.clear();
+					} | {inicio_funcao.push_back(codigo_funcoes.size());};
 
 mult_func_args : ',' LVALUE mult_func_args { $2.c = concatena_vetor($2.c, $3.c); $$ = $2; $2.c.clear(); $3.c.clear();} | /* Vazio */;
 
@@ -321,6 +327,68 @@ chamada_funcao : LVALUE'(' func_args_chamada ')' {$3.c.push_back(to_string($3.nu
 func_args_chamada : E {$1.num_args = 1;} mult_func_args_chamada {$1.num_args += $3.num_args; $1.c = concatena_vetor($1.c, $3.c); $$ = $1; $1.c.clear(); $3.c.clear(); $1.num_args = 0; $3.num_args = 0;} | {$$.num_args = 0;} /* Vazio */;
 
 mult_func_args_chamada : ',' E {$2.num_args = 1;} mult_func_args_chamada {$2.num_args += $4.num_args; $2.c = concatena_vetor($2.c, $4.c); $$ = $2; $2.c.clear(); $4.c.clear(); $2.num_args = 0; $4.num_args = 0;} | {$$.num_args = 0;} /* Vazio */ ;
+
+decl_func_lambda : parentese_args_anon  {
+						escopo_funcao++;
+						cria_escopo();
+						$1.c.push_back("{}");
+						$1.c.push_back("'&funcao'");
+						
+						string label = ";";
+						$1.c.push_back(label + "func" + "_" + to_string(label_func));
+						$1.c.push_back("[<=]");
+				
+					} 
+					
+					func_args ')' {ultimo_token = -1; } tk_oper_seta
+										
+										opcao_func_anon	
+										{
+											codigo_funcoes = concatena_vetor(codigo_funcoes, $7.c);
+											escopo_funcao--;
+											deleta_escopo();
+											$1.c.clear();
+											$3.c.clear();
+											$7.c.clear();
+										}
+			| LVALUE 	{
+						escopo_funcao++;
+						cria_escopo();
+						$1.c.clear();
+						$1.c.push_back("{}");
+						$1.c.push_back("'&funcao'");						
+						string label = ";";
+						$1.c.push_back(label + "func" + "_" + to_string(label_func));
+						$1.c.push_back("[<=]");
+						
+						inicio_funcao.push_back(codigo_funcoes.size());									
+						declara_variavel($1.e, linha, "let");
+						codigo_funcoes.push_back($1.e);
+						codigo_funcoes.push_back("&");
+						codigo_funcoes.push_back($1.e);
+						codigo_funcoes.push_back("arguments");
+						codigo_funcoes.push_back("@");
+						codigo_funcoes.push_back("0");
+						codigo_funcoes.push_back("[@]");
+						codigo_funcoes.push_back("=");
+						codigo_funcoes.push_back("^");						
+							
+					} tk_oper_seta 
+							opcao_func_anon {codigo_funcoes = concatena_vetor(codigo_funcoes, $4.c); escopo_funcao--; deleta_escopo();
+											$1.c.clear(); $4.c.clear();}
+			;
+
+opcao_func_anon : E {$1.c.push_back("'&retorno'"); $1.c.push_back("@"); $1.c.push_back("~"); $$ = $1; $1.c.clear();} 
+			| bloco_func 	{
+						ultimo_token = '}';
+						$1.c.push_back("undefined");
+						$1.c.push_back("@");
+						$1.c.push_back("'&retorno'");
+						$1.c.push_back("@");
+						$1.c.push_back("~");
+						$$ = $1;
+						$1.c.clear();
+					};
 
 chamada_if:  tk_if '(' E ')' 
 			{
@@ -462,7 +530,7 @@ for_decl_ou_atrib : declaracao
 			| atribuicao {$1.c.push_back("^"); $$ = $1;}
 			| /* Vazio */;
 
-for_incr_ou_nao : atribuicao {$1.c.push_back("^"); $$ = $1;}
+for_incr_ou_nao : E {$1.c.push_back("^"); $$ = $1;}
 			| /* Vazio */;
 %%
 
