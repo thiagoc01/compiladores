@@ -34,6 +34,7 @@ int label_while = 1;
 int label_func = 1;
 int escopo_funcao = 0;
 int num_args_vec = 0;
+vector<int> args_func;
 int declarando_ou_atribuindo = 0;
 
 int yylex();
@@ -253,8 +254,8 @@ args_vect : E {num_args_vec++;} mult_args_vect {$2.c = {"0"}; $2.c = concatena_v
 mult_args_vect : ',' E {$1.c.push_back(to_string(num_args_vec)); $1.c = concatena_vetor($1.c, $2.c); $1.c.push_back("[<=]"); num_args_vec++;} mult_args_vect {$1.c = concatena_vetor($1.c, $4.c); $$ = $1; $1.c.clear(); $2.c.clear(); $4.c.clear();} | /* Vazio */;
 
 decl_func : tk_func LVALUE {
-				declara_variavel($2.e, linha, "func");
 				escopo_funcao++;
+				declara_variavel($2.e, linha, "func");				
 				cria_escopo();
 				$1.c.push_back($2.e);
 				$1.c.push_back("&");
@@ -267,6 +268,7 @@ decl_func : tk_func LVALUE {
 				$1.c.push_back(label + "func" + "_" + to_string(label_func));
 				$1.c.push_back("[=]");
 				$1.c.push_back("^");
+				inicio_funcao.push_back (codigo_funcoes.size());
 				
 			} '(' func_args ')'	{ultimo_token = -1;}
 									bloco_func
@@ -292,31 +294,132 @@ decl_func : tk_func LVALUE {
 		;
 								
 
-func_args : LVALUE mult_func_args 	{
-							inicio_funcao.push_back(codigo_funcoes.size());
-							int args = 0;
-							vector<string> todos_args = concatena_vetor($1.c, $2.c);
-							
-							for (string arg : todos_args)
-							{										
-								declara_variavel(arg, linha, "let");
-								codigo_funcoes.push_back(arg);
-								codigo_funcoes.push_back("&");
-								codigo_funcoes.push_back(arg);
-								codigo_funcoes.push_back("arguments");
-								codigo_funcoes.push_back("@");
-								codigo_funcoes.push_back(to_string(args));
-								codigo_funcoes.push_back("[@]");
-								codigo_funcoes.push_back("=");
-								codigo_funcoes.push_back("^");
-								args++;							
-							}
-							$$ = $1;
-							$1.c.clear();
-							$2.c.clear();
-					} | {inicio_funcao.push_back(codigo_funcoes.size());};
+func_args : LVALUE	{
+				args_func.push_back(0);
+				declara_variavel($1.e, linha, "let");
+				
+				codigo_funcoes.push_back($1.e);
+				codigo_funcoes.push_back("&");
+				codigo_funcoes.push_back($1.e);
+				codigo_funcoes.push_back("arguments");
+				codigo_funcoes.push_back("@");
+				codigo_funcoes.push_back(to_string(args_func.back()));
+				codigo_funcoes.push_back("[@]");
+				codigo_funcoes.push_back("=");
+				codigo_funcoes.push_back("^");
+				args_func.back()++;
+			} mult_func_args {$3.c.clear(); args_func.pop_back();}
+		| LVALUE '='	{
+					args_func.push_back(0);
+					declara_variavel($1.e, linha, "let");
+					codigo_funcoes.push_back($1.e);
+					codigo_funcoes.push_back("&");
+					codigo_funcoes.push_back($1.e);
+					codigo_funcoes.push_back("arguments");
+					codigo_funcoes.push_back("@");
+					codigo_funcoes.push_back(to_string(args_func.back()));
+					codigo_funcoes.push_back("[@]");
+					codigo_funcoes.push_back("undefined");					
+					codigo_funcoes.push_back("==");				
+					codigo_funcoes.push_back(gera_label_inicial("if", label_if));
+					posicoes_labels_iniciais.insert({codigo_funcoes[codigo_funcoes.size() - 1],codigo_funcoes.size() - 1});					
+					codigo_funcoes.push_back("?");
+				}	atribuicao_default_func		{
+										codigo_funcoes.push_back("arguments");
+										codigo_funcoes.push_back("@");
+										codigo_funcoes.push_back(to_string(args_func.back()));
+										codigo_funcoes.push_back("[@]");
+										codigo_funcoes.push_back("=");
+										codigo_funcoes.push_back("^");
+										codigo_funcoes.push_back(gera_label_inicial("else", label_else));
+										posicoes_labels_iniciais.insert({codigo_funcoes[codigo_funcoes.size() - 1],codigo_funcoes.size() - 1});
+										codigo_funcoes.push_back("#");
+										
+										
+										string para_encontrar = gera_label_final("if", label_if-1); 
+										map<string,int>::iterator i = posicoes_labels_iniciais.find(para_encontrar);
+										codigo_funcoes[i->second] = para_encontrar + "+" + to_string(1  + 6 + 3); 
+										posicoes_labels_iniciais.erase(i);
+									}
+									
+									{
+										codigo_funcoes = concatena_vetor(codigo_funcoes, $4.c);
+										codigo_funcoes.push_back("=");
+										codigo_funcoes.push_back("^");								
+										string para_encontrar = gera_label_final("else", label_else-1);				
+										map<string,int>::iterator i = posicoes_labels_iniciais.find(para_encontrar);
+										codigo_funcoes[i->second] = para_encontrar + "+" + to_string(1 + $4.c.size() + 3); 
+										posicoes_labels_iniciais.erase(i);
+										$4.c.clear();
+										args_func.back()++;
+									}				
+				 					mult_func_args {$7.c.clear(); args_func.pop_back();}
+		| /* Vazio */;
 
-mult_func_args : ',' LVALUE mult_func_args { $2.c = concatena_vetor($2.c, $3.c); $$ = $2; $2.c.clear(); $3.c.clear();} | /* Vazio */;
+mult_func_args : ',' LVALUE	{
+					declara_variavel($2.e, linha, "let");
+					codigo_funcoes.push_back($2.e);
+					codigo_funcoes.push_back("&");
+					codigo_funcoes.push_back($2.e);
+					codigo_funcoes.push_back("arguments");
+					codigo_funcoes.push_back("@");
+					codigo_funcoes.push_back(to_string(args_func.back()));
+					codigo_funcoes.push_back("[@]");
+					codigo_funcoes.push_back("=");
+					codigo_funcoes.push_back("^");
+					args_func.back()++;
+				} mult_func_args {$4.c.clear();}
+				
+		| ',' LVALUE '='	{
+						declara_variavel($2.e, linha, "let");
+						codigo_funcoes.push_back($2.e);
+						codigo_funcoes.push_back("&");
+						codigo_funcoes.push_back($2.e);
+						codigo_funcoes.push_back("arguments");
+						codigo_funcoes.push_back("@");
+						codigo_funcoes.push_back(to_string(args_func.back()));
+						codigo_funcoes.push_back("[@]");
+						codigo_funcoes.push_back("undefined");					
+						codigo_funcoes.push_back("==");				
+						codigo_funcoes.push_back(gera_label_inicial("if", label_if));
+						posicoes_labels_iniciais.insert({codigo_funcoes[codigo_funcoes.size() - 1],codigo_funcoes.size() - 1});					
+						codigo_funcoes.push_back("?");
+					}	atribuicao_default_func	
+										{
+											codigo_funcoes.push_back("arguments");
+											codigo_funcoes.push_back("@");
+											codigo_funcoes.push_back(to_string(args_func.back()));
+											codigo_funcoes.push_back("[@]");
+											codigo_funcoes.push_back("=");
+											codigo_funcoes.push_back("^");
+											codigo_funcoes.push_back(gera_label_inicial("else", label_else));
+											posicoes_labels_iniciais.insert({codigo_funcoes[codigo_funcoes.size() - 1],codigo_funcoes.size() - 1});
+											codigo_funcoes.push_back("#");
+											
+											
+											string para_encontrar = gera_label_final("if", label_if-1); 
+											map<string,int>::iterator i = posicoes_labels_iniciais.find(para_encontrar);
+											codigo_funcoes[i->second] = para_encontrar + "+" + to_string(1  + 6 + 3); 
+											posicoes_labels_iniciais.erase(i);
+										}
+										
+										{
+											codigo_funcoes = concatena_vetor(codigo_funcoes, $5.c);
+											codigo_funcoes.push_back("=");
+											codigo_funcoes.push_back("^");								
+											string para_encontrar = gera_label_final("else", label_else-1);				
+											map<string,int>::iterator i = posicoes_labels_iniciais.find(para_encontrar);
+											codigo_funcoes[i->second] = para_encontrar + "+" + to_string(1 + $5.c.size() + 3); 
+											posicoes_labels_iniciais.erase(i);
+											$5.c.clear();
+											args_func.back()++;
+										}
+										mult_func_args {$8.c.clear();}
+		| /* Vazio */;
+		
+
+					
+atribuicao_default_func : LVALUE '=' atribuicao_default_func {$$ = $3; $3.c.clear();} | F;
 
 retorno_func : tk_return E';' {$2.c.push_back("'&retorno'"); $2.c.push_back("@"); $2.c.push_back("~"); $$ = $2; $2.c.clear();};
 
@@ -336,6 +439,7 @@ decl_func_lambda : parentese_args_anon  {
 						string label = ";";
 						$1.c.push_back(label + "func" + "_" + to_string(label_func));
 						$1.c.push_back("[<=]");
+						inicio_funcao.push_back(codigo_funcoes.size());
 				
 					} 
 					
@@ -392,6 +496,7 @@ decl_func_lambda : parentese_args_anon  {
 						string label = ";";
 						$1.c.push_back(label + "func" + "_" + to_string(label_func));
 						$1.c.push_back("[<=]");
+						inicio_funcao.push_back(codigo_funcoes.size());
 				
 					} 
 					
