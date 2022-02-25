@@ -106,6 +106,10 @@ CMD : declaracao_const';' 	{
 bloco : '{' ';' '}'
 	| '{' {cria_escopo(); $1.c.push_back("<{"); } mult_CMD  '}' {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("}>"); ultimo_token = -1; deleta_escopo(); $$ = $1; $1.c.clear(); $3.c.clear();}
 	| tk_bloco_vazio '}' ;
+	
+bloco_func : '{' ';' '}'
+		| '{'  mult_CMD '}' { ultimo_token = -1; $1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();}
+		| tk_bloco_vazio '}' ;
 
 mult_CMD : CMD mult_CMD {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();} 
 		| CMD {$$ = $1; $1.c.clear();};
@@ -261,8 +265,7 @@ decl_func : tk_func LVALUE {
 				$1.c.push_back("[=]");
 				$1.c.push_back("^");
 				
-			} '(' func_args ')' {ultimo_token = -1;} '{' 
-									
+			} '(' func_args ')' {ultimo_token = -1;}						
 									{
 										
 										inicio_funcao.push_back(codigo_funcoes.size());
@@ -285,12 +288,12 @@ decl_func : tk_func LVALUE {
 									}
 									
 									
-									mult_CMD
+									bloco_func
 									{
-										codigo_funcoes = concatena_vetor(codigo_funcoes, $10.c);
+										codigo_funcoes = concatena_vetor(codigo_funcoes, $9.c);
 									}						 	
 									 
-								'}'
+								
 								
 								{										
 									
@@ -305,7 +308,7 @@ decl_func : tk_func LVALUE {
 									$1.c.clear();
 									$2.c.clear();
 									$5.c.clear();
-									$10.c.clear();
+									$9.c.clear();
 								};
 
 func_args : LVALUE mult_func_args {$1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();} | ;
@@ -461,7 +464,7 @@ for_decl_ou_atrib : declaracao
 			| atribuicao {$1.c.push_back("^"); $$ = $1;}
 			| /* Vazio */;
 
-for_incr_ou_nao : atribuicao {$1.c.push_back("^"); $$ = $1;}
+for_incr_ou_nao : E {$1.c.push_back("^"); $$ = $1;}
 			| /* Vazio */;
 %%
 
