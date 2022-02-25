@@ -36,6 +36,7 @@ int escopo_funcao = 0;
 int num_args_vec = 0;
 vector<int> args_func;
 int declarando_ou_atribuindo = 0;
+int em_objeto = 0;
 
 int yylex();
 int yyparse();
@@ -241,8 +242,8 @@ L : LVALUE {checa_condicao_variavel($1.e, true); $1.c.push_back("@");  $$ = $1;}
 Objetos : '['']' {$2.c.push_back("[]"); $$ = $2; $2.c.clear();}
 		| '[' args_vect ']' {$1.c.push_back("[]"); $1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();}
 		
-		| '{' '}' {ultimo_token = '}'; $1.c.push_back("{}"); $$ = $1; $1.c.clear();}
-		| tk_abre_obj args_dict '}' {$1.c.push_back("{}"); $1.c = concatena_vetor($1.c, $2.c); $$ = $1; $1.c.clear(); $2.c.clear();};
+		| '{' {em_objeto++; } '}' {em_objeto--; ultimo_token = '}'; $1.c.push_back("{}"); $$ = $1; $1.c.clear();}
+		| tk_abre_obj {em_objeto++;} args_dict '}' {em_objeto--;  ultimo_token = '}'; $1.c.push_back("{}"); $1.c = concatena_vetor($1.c, $3.c); $$ = $1; $1.c.clear(); $3.c.clear();};
 		
 args_dict :	LVALUE ':' E mult_args_dict {$1.c = concatena_vetor($1.c, $3.c); $1.c.push_back("[<=]"); $1.c = concatena_vetor($1.c, $4.c);  $$ = $1; $1.c.clear(); $4.c.clear();$3.c.clear();};
 

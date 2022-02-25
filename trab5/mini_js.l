@@ -2,9 +2,7 @@
 
 int linha = 1;
 int ultimo_token = -1;
-string remove_chars(string base, string para_remover);
 vector<string> gera_vetor_codigo(string codigo);
-
 %}
 
 WS	[ \t\n]
@@ -59,7 +57,7 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 "\n"/{WS}*({NLPOSS}){WS}*	{linha++;if (ultimo_token != ';'){ if (ultimo_token != -1) { ultimo_token = ';'; return ';';}}}
 
-"\n"/{WS}*({ID}|{INT}|{FLOAT}|{STRING}|{STRING2}|"}"|"{"){WS}*	{linha++; if (ultimo_token == tk_id || ultimo_token == tk_int || ultimo_token == tk_float || ultimo_token == tk_str || ultimo_token == tk_str2 || ultimo_token == tk_bool || ultimo_token == ')' || ultimo_token == ']' || ultimo_token == '}') {ultimo_token = ';';return ';'; } }
+"\n"/{WS}*({ID}|{INT}|{FLOAT}|{STRING}|{STRING2}|"}"|"{"){WS}*	{linha++; if ((ultimo_token == tk_id || ultimo_token == tk_int || ultimo_token == tk_float || ultimo_token == tk_str || ultimo_token == tk_str2 || ultimo_token == tk_bool || ultimo_token == ')' || ultimo_token == ']' || ultimo_token == '}') && !em_objeto) {ultimo_token = ';';return ';'; } }
 
 "{"/{WS}*{ID}{WS}*":"	{return tk_abre_obj;}
 
