@@ -37,6 +37,8 @@ INT {DIGITO}+
 
 ID	(({LETRA}({LETRA}|{DIGITO})*))
 
+ID_FUNC	{ID}'('
+
 FLOAT   {INT}(\.{INT}+)?([Ee](\+|\-)?{INT})?
 
 STRING	('([^'\\\n]|\\'|\"|''|\\.)*')|(\"([^"\\\n]|\\\"|'|\\.|\"\")*\")
@@ -59,11 +61,13 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 "\n"/{WS}*({ID}|{INT}|{FLOAT}|{STRING}|{STRING2}|"}"|"{"){WS}*	{linha++; if ((ultimo_token == tk_id || ultimo_token == tk_int || ultimo_token == tk_float || ultimo_token == tk_str || ultimo_token == tk_str2 || ultimo_token == tk_bool || ultimo_token == ')' || ultimo_token == ']' || ultimo_token == '}') && !em_objeto) {ultimo_token = ';';return ';'; } }
 
-"{"/{WS}*{ID}{WS}*":"	{return tk_abre_obj;}
+"{"/{WS}*{ID}{WS}*":"	{ return tk_abre_obj;}
 
 "{"/{WS}*"}"{WS}+	{if (ultimo_token == ';' || ultimo_token == -1) return tk_bloco_vazio; else{ultimo_token = '{'; return '{';}}
 
-"("/.*")"{WS}*"=>"	{return parentese_args_anon;}
+"("/[^(]*")"{WS}*"=>"	{return parentese_args_anon;}
+
+"}"/[^;}]	{ if(ultimo_token != ';' && ultimo_token != '{' && ultimo_token != -1 && !em_objeto) {unput('}');ultimo_token = ';'; return ';';} else return '}';}
 
 {WS}    {if (*yytext == '\n') linha++; }
 
@@ -124,13 +128,12 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 "=>"	{ultimo_token = tk_oper_seta; return tk_oper_seta;}
 
-.	{if (yytext[0] == ';')ultimo_token = *yytext; return *yytext; }
+.	{if (yytext[0] == ';' || yytext[0] == ',')ultimo_token = *yytext; return *yytext; }
 
 %%
 
 vector<string> gera_vetor_codigo(string codigo)
 {
-	int pos = 0;
 	vector<string> ret;	
 	string var;
 	

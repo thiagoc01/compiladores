@@ -1,6 +1,6 @@
 bups/
-entradas/
+entradas*/
 mdp/
 exec.sh
-exec_mdp.sh
+exec_mdp*.sh
 entrada*.txt
