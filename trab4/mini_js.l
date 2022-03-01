@@ -55,15 +55,17 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 ";"[\n \r\t;]*	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; if (ultimo_token != ';') {ultimo_token = ';'; return ';';}}
 
-"{"[\n \t\r;]*[;][\n \t\r;]*"}"	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; }
+"{"[\n \t\r;]*';'[\n \t\r;]*"}"	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; }
 
 "\n"/{WS}*({NLPOSS}){WS}*	{linha++; if (ultimo_token != ';'){ if (ultimo_token != -1) { ultimo_token = ';'; return ';';}}}
 
-"\n"/{WS}*({ID}|{INT}|{FLOAT}|{STRING}|{STRING2}|"}"|"{"){WS}*	{linha++; if (ultimo_token == tk_id || ultimo_token == tk_int || ultimo_token == tk_float || ultimo_token == tk_str || ultimo_token == tk_str2 || ultimo_token == tk_bool || ultimo_token == ')' || ultimo_token == ']' || ultimo_token == '}') {ultimo_token = ';';return ';'; }}
+"\n"/{WS}*({ID}|{INT}|{FLOAT}|{STRING}|{STRING2}|"}"|"{"|"["){WS}*	{linha++; if ( (ultimo_token == tk_id || ultimo_token == tk_int || ultimo_token == tk_float || ultimo_token == tk_str || ultimo_token == tk_str2 || ultimo_token == tk_bool || ultimo_token == ')' || ultimo_token == ']' || ultimo_token == '}') && !em_objeto) {ultimo_token = ';';return ';'; } }
 
 "{"/{WS}*{ID}{WS}*":"	{return tk_abre_obj;}
 
 "{"/{WS}*"}"{WS}+	{if (ultimo_token == ';' || ultimo_token == -1) return tk_bloco_vazio; else{ultimo_token = '{'; return '{';}}
+
+"}"/[^;}]	{ if(ultimo_token != ';' && ultimo_token != tk_bloco_vazio && ultimo_token != -1 && !em_objeto) {unput('}');ultimo_token = ';'; return ';';} else return '}';}
 
 {WS}    {if (*yytext == '\n') linha++; }
 
@@ -88,6 +90,7 @@ NLPOSS	({LET}|{VAR}|{CONST})
 {RETURN}	{ultimo_token = tk_return; return tk_return;}
 
 {ASM}.*"}"	{
+			ultimo_token = '}';
 			while (*yytext != '{')
 			{
 				if (*yytext == '\n')
@@ -99,6 +102,8 @@ NLPOSS	({LET}|{VAR}|{CONST})
 		        yylval.c = gera_vetor_codigo( trimada );
 		        return tk_ASM;  
 		}
+		
+
 
 {INT}	{ultimo_token = tk_int; yylval.e = yytext; 
 	  return tk_int; }
@@ -122,7 +127,7 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 "=="	{ultimo_token = tk_igual; return tk_igual;}
 
-.	{if (yytext[0] == ';')ultimo_token = *yytext; return *yytext; }
+.	{if (yytext[0] == ';' || yytext[0] == ',' )ultimo_token = *yytext; return *yytext; }
 
 %%
 
