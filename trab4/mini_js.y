@@ -30,7 +30,6 @@ vector<string> para_concatenar;
 
 map<string,int> inicio_funcao; // Guarda o começo de cada função para troca no label
 map<string,int> inicio_funcao_conc; // Análogo ao anterior, mas para as funções que estão aninhadas a uma principal
-vector<string> incremento;
 vector<int> args_func; // Calcula o número de argumentos da função mais dentro do aninhamento
 
 int label_if = 1;
@@ -55,7 +54,7 @@ vector<string> concatena_vetor(vector<string> v1, vector<string> v2);
 void gera_codigo(vector<string> codigo);
 string gera_label_inicial(string nome, int label);
 string gera_label_final(string nome, int label);
-vector<string> realiza_pos_incremento(int posicao, bool obj);
+vector<string> realiza_pos_incremento(string variavel, bool obj);
 void resolve_enderecos(vector<string> &codigo, int tamanho_vetor_codigo);
 string ultimo_obj;
 
@@ -66,10 +65,11 @@ string ultimo_tipo_declarado; // Referencial para declarações, em caso de have
 %}
 
 %token tk_let tk_var tk_const tk_int tk_float tk_str tk_str2 tk_id tk_ponto tk_igual tk_incremento tk_incremento_um tk_diferente
-%token tk_if tk_for tk_while tk_else tk_func tk_return	tk_bloco_vazio	tk_abre_obj tk_ASM tk_bool
+%token tk_if tk_for tk_while tk_else tk_func tk_return	tk_bloco_vazio	tk_abre_obj tk_ASM tk_bool tk_then
 // Start indica o símbolo inicial da gramática
 %start FIM
-
+%nonassoc tk_then
+%nonassoc tk_else
 %%
 
 
@@ -150,38 +150,11 @@ atribuicao : LVALUEPROP {checa_condicao_variavel($1.e, true); obj = true; } '=' 
 decl_atrib : LVALUE {if (!declara_variavel($1.e, linha, ultimo_tipo_declarado)) { $1.c.push_back("&"); $1.c.push_back($1.e); } ultimo_obj = $1.e; obj = false; } '=' E {$1.c = concatena_vetor($1.c, $4.c); if ((($4.c[0] == "{}" || $4.c[0] == "[]") && $4.c.size() == 1) || ($4.c[0] != "{}" && $4.c[0] != "[]")) $1.c.push_back("="); $1.c.push_back("^"); $$ = $1;  $1.c.clear(); $4.c.clear(); };
 			
 E :	F 
-		{
-			if (incremento.size())
-			{
-				for (int i = 0 ; i < incremento.size() ; i++)
-				{
-					if (incremento[i].find("[@]") != string::npos)
-					{
-						incremento[i] = incremento[i].substr(0, incremento[i].size() - 3);
-						$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, true));
-					}
-					else
-						$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, false));		
-				}
-			}
-			
+		{			
 			$$ = $1;
 			$1.c.clear();
 		}
 	 | atribuicao 	{
-				if (incremento.size())
-				{
-					for (int i = 0 ; i < incremento.size() ; i++)
-					{
-						if (incremento[i].find("[@]") != string::npos)
-						{
-							incremento[i] = incremento[i].substr(0, incremento[i].size() - 3);
-							$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, true));
-						}
-						else
-							$1.c = concatena_vetor($1.c, realiza_pos_incremento(i, false));		
-					}
-				}
 				$$ = $1;
 				$1.c.clear();
 			};
@@ -224,21 +197,28 @@ L : LVALUE {checa_condicao_variavel($1.e, true); $1.c.push_back("@");  $$ = $1;}
 			| LVALUEPROP {checa_condicao_variavel($1.e, true); $1.c.push_back("[@]"); $$ = $1; }
 			| Objetos {$$ = $1; $1.c.clear();}
 			| chamada_funcao {$$ = $1; $1.c.clear();}
-			| LVALUE tk_incremento_um {checa_condicao_variavel($1.e, true); $1.c.push_back("@"); incremento.push_back($1.e); $$ = $1; }
+			| LVALUE tk_incremento_um	{
+								checa_condicao_variavel($1.e, true);
+								$1.c.push_back("@");
+								$1.c = concatena_vetor($1.c, realiza_pos_incremento($1.e, false));								
+								$$ = $1;
+								$1.c.clear();
+							}
 			| LVALUEPROP tk_incremento_um 	{
 								checa_condicao_variavel($1.e, true);
 								$1.c.push_back("[@]");
 								vector<string> pos = $1.c;
 								string temp;
 								
-								for (int i = 0 ; i < pos.size() ; i++)
+								for (int i = 0 ; i < pos.size() - 1 ; i++)
 								{
 									temp += pos[i];
 									temp += " ";
 								}
-									
-								incremento.push_back(temp);
-								$$ = $1; 
+								
+								$1.c = concatena_vetor($1.c, realiza_pos_incremento(temp, true));	
+								$$ = $1;
+								$1.c.clear();
 							} ;
 
 Objetos : '['']' {$2.c.push_back("[]"); ultimo_token = ']'; $$ = $2; $2.c.clear();}
@@ -431,7 +411,7 @@ chamada_if:  tk_if '(' E ')'
 			};
 
 chamada_else: tk_else {ultimo_token = -1;} CMD {$$ = $3; $3.c.clear();}
-			| /* Vazio */;
+			| /* Vazio */ %prec tk_then;
 
 chamada_while:	tk_while '(' E ')' 
 		{
@@ -605,7 +585,7 @@ bool declara_variavel(string nome, int linha, string tipo_declaracao)
 		}
 		
 		ultimo_escopo->erase(nome);
-		esta_declarada = true;				
+		ja_declarada = true;				
 	}
 	
 	Atributos atributos;
@@ -726,13 +706,13 @@ void resolve_enderecos(vector<string> &codigo, int tamanho_vetor_codigo)
 	}	
 }
 
-vector<string> realiza_pos_incremento(int posicao, bool obj)
+vector<string> realiza_pos_incremento(string variavel, bool obj)
 {
 	vector<string> ret;
 	
 	if (obj)
 	{
-		string temp = incremento[posicao];
+		string temp = variavel;
 
 		int pos = 0;
 		string var;
@@ -750,19 +730,17 @@ vector<string> realiza_pos_incremento(int posicao, bool obj)
 		ret.push_back("+");
 		ret.push_back("[=]");
 		ret.push_back("^");
-		incremento.erase(incremento.begin() + posicao);
 	}
 	
 	else
 	{
-		ret.push_back(incremento[posicao]);
-		ret.push_back(incremento[posicao]); 
+		ret.push_back(variavel);
+		ret.push_back(variavel); 
 		ret.push_back("@");
 		ret.push_back("1"); 
 		ret.push_back("+");
 		ret.push_back("="); 
 		ret.push_back("^");
-		incremento.erase(incremento.begin() + posicao);
 	}
 	
 	return ret;
