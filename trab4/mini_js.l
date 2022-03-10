@@ -65,7 +65,7 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 "{"/{WS}*"}"{WS}+	{if (ultimo_token == ';' || ultimo_token == -1) return tk_bloco_vazio; else{ultimo_token = '{'; return '{';}}
 
-"}"/[^;}]	{ if(ultimo_token != ';' && ultimo_token != tk_bloco_vazio && ultimo_token != -1 && !em_objeto) {unput('}');ultimo_token = ';'; return ';';} else return '}';}
+"}"	{ if(ultimo_token != ';' && ultimo_token != tk_bloco_vazio && ultimo_token != -1 && !em_objeto) {unput('}');ultimo_token = ';'; return ';';} else return '}';}
 
 {WS}    {if (*yytext == '\n') linha++; }
 
