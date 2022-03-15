@@ -26,7 +26,7 @@ map<string, int> posicoes_labels_iniciais; // Guarda as posições de labels dos
 
 /* Guardam o código das funções e das funções aninhadas */
 vector<string> codigo_funcoes;
-vector<string> para_concatenar;
+vector<vector<string>> para_concatenar;
 
 
 map<string,int> inicio_funcao; // Guarda o começo de cada função para troca no label
@@ -252,7 +252,7 @@ mult_args_vect : ',' E {$1.c.push_back(to_string(num_args_vec)); $1.c = concaten
 **********************/
 
 decl_func : tk_func LVALUE {
-				escopo_funcao++;
+				escopo_funcao++;				
 				$1.c.clear();
 				declara_variavel($2.e, linha, "func");				
 				cria_escopo();
@@ -276,34 +276,39 @@ decl_func : tk_func LVALUE {
 				if (escopo_funcao == 1)
 					inicio_funcao.insert({label, codigo_funcoes.size()});
 				else
-					inicio_funcao_conc.insert({label, para_concatenar.size()});
+					
+					inicio_funcao_conc.insert({label, 0});
 				
-			} '(' func_args ')'	{if (escopo_funcao == 1) codigo_funcoes = concatena_vetor(codigo_funcoes, $5.c);  else  para_concatenar = concatena_vetor(para_concatenar, $5.c); ultimo_token = -1; $5.c.clear();}
+			} '(' func_args ')'	{if (escopo_funcao == 1) codigo_funcoes = concatena_vetor(codigo_funcoes, $5.c);  else para_concatenar.push_back($5.c); ultimo_token = -1; $5.c.clear();}
 									bloco_func
 								
 									{	
 										if (escopo_funcao == 1)									
 											codigo_funcoes = concatena_vetor(codigo_funcoes, $8.c);
-										else											
-											para_concatenar = concatena_vetor(para_concatenar, $8.c);
+										else
+											para_concatenar[escopo_funcao - 2] = concatena_vetor(para_concatenar[escopo_funcao - 2], $8.c);
 									}
 								
 								{										
 									if (escopo_funcao == 1)
 									{
-										map<string, int>::iterator i;
-
-										for (i = inicio_funcao_conc.begin() ; i != inicio_funcao_conc.end() ; i++)
-											inicio_funcao.insert({i->first, codigo_funcoes.size() + 5 + i->second});
-											
-										inicio_funcao_conc.clear();
+									
 										codigo_funcoes.push_back("undefined");
 										codigo_funcoes.push_back("@");
 										codigo_funcoes.push_back("'&retorno'");
 										codigo_funcoes.push_back("@");
 										codigo_funcoes.push_back("~");
 										
-										codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar);
+										map<string, int>::iterator i;
+										int pos = 0;
+										
+										for (i = inicio_funcao_conc.begin() ; i != inicio_funcao_conc.end() ; i++)
+										{
+											inicio_funcao.insert({i->first, codigo_funcoes.size()});
+											codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar[pos++]);				
+										}
+											
+										inicio_funcao_conc.clear();			
 										
 										para_concatenar.clear();										
 										
@@ -311,11 +316,11 @@ decl_func : tk_func LVALUE {
 									
 									else
 									{
-										para_concatenar.push_back("undefined");
-										para_concatenar.push_back("@");
-										para_concatenar.push_back("'&retorno'");
-										para_concatenar.push_back("@");
-										para_concatenar.push_back("~");
+										para_concatenar[escopo_funcao - 2].push_back("undefined");
+										para_concatenar[escopo_funcao - 2].push_back("@");
+										para_concatenar[escopo_funcao - 2].push_back("'&retorno'");
+										para_concatenar[escopo_funcao - 2].push_back("@");
+										para_concatenar[escopo_funcao - 2].push_back("~");
 									}				
 										
 									escopo_funcao--;
@@ -487,11 +492,11 @@ decl_func_lambda : parentese_args_anon  {
 						if (escopo_funcao == 1)
 							inicio_funcao.insert({label, codigo_funcoes.size()});
 						else
-							inicio_funcao_conc.insert({label, para_concatenar.size()});
+							inicio_funcao_conc.insert({label, 0});
 				
 					} 
 					
-					func_args ')' {if (escopo_funcao == 1) codigo_funcoes = concatena_vetor(codigo_funcoes, $3.c); else para_concatenar = concatena_vetor(para_concatenar, $3.c); ultimo_token = -1; $3.c.clear();} tk_oper_seta
+					func_args ')' {if (escopo_funcao == 1) codigo_funcoes = concatena_vetor(codigo_funcoes, $3.c); else para_concatenar.push_back($3.c); ultimo_token = -1; $3.c.clear();} tk_oper_seta
 										
 										opcao_func_anon	
 										{
@@ -500,17 +505,20 @@ decl_func_lambda : parentese_args_anon  {
 												codigo_funcoes = concatena_vetor(codigo_funcoes, $7.c);
 												
 												map<string, int>::iterator i;
+												int pos = 0;
 
 												for (i = inicio_funcao_conc.begin() ; i != inicio_funcao_conc.end() ; i++)
-													inicio_funcao.insert({i->first, codigo_funcoes.size() + i->second});
+												{
+													inicio_funcao.insert({i->first, codigo_funcoes.size()});
+													codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar[pos++]);
+												}
 												
-												inicio_funcao_conc.clear();
-												
-												codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar);
+												inicio_funcao_conc.clear();									
+													
 												para_concatenar.clear();
 											}
 											else
-												para_concatenar = concatena_vetor(para_concatenar, $7.c);
+												para_concatenar[escopo_funcao - 2] = concatena_vetor(para_concatenar[escopo_funcao - 2], $7.c);
 												
 											escopo_funcao--;
 											deleta_escopo();
@@ -546,18 +554,21 @@ decl_func_lambda : parentese_args_anon  {
 							codigo_funcoes.push_back("^");
 						}
 						else
-						{
-							inicio_funcao_conc.insert({label, para_concatenar.size()});
+						{							
+							inicio_funcao_conc.insert({label, 0});
+							
 							declara_variavel($1.e, linha, "let");
-							para_concatenar.push_back($1.e);
-							para_concatenar.push_back("&");
-							para_concatenar.push_back($1.e);
-							para_concatenar.push_back("arguments");
-							para_concatenar.push_back("@");
-							para_concatenar.push_back("0");
-							para_concatenar.push_back("[@]");
-							para_concatenar.push_back("=");
-							para_concatenar.push_back("^");
+							
+							para_concatenar.push_back({});						
+							para_concatenar[escopo_funcao - 2].push_back($1.e);
+							para_concatenar[escopo_funcao - 2].push_back("&");
+							para_concatenar[escopo_funcao - 2].push_back($1.e);
+							para_concatenar[escopo_funcao - 2].push_back("arguments");
+							para_concatenar[escopo_funcao - 2].push_back("@");
+							para_concatenar[escopo_funcao - 2].push_back("0");
+							para_concatenar[escopo_funcao - 2].push_back("[@]");
+							para_concatenar[escopo_funcao - 2].push_back("=");
+							para_concatenar[escopo_funcao - 2].push_back("^");
 						}
 															
 												
@@ -569,17 +580,21 @@ decl_func_lambda : parentese_args_anon  {
 											codigo_funcoes = concatena_vetor(codigo_funcoes, $4.c);
 											
 											map<string, int>::iterator i;
+											
+											int pos = 0;
 
 											for (i = inicio_funcao_conc.begin() ; i != inicio_funcao_conc.end() ; i++)
+											{
 												inicio_funcao.insert({i->first, codigo_funcoes.size() + i->second});
+												codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar[pos++]);
+											}
 											
 											inicio_funcao_conc.clear();
-											
-											codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar);
+												
 											para_concatenar.clear();
 										}
 										else				
-											para_concatenar = concatena_vetor(para_concatenar, $4.c);
+											para_concatenar[escopo_funcao - 2] = concatena_vetor(para_concatenar[escopo_funcao - 2], $4.c);
 											
 										escopo_funcao--;
 										deleta_escopo();
@@ -611,49 +626,52 @@ decl_func_lambda : parentese_args_anon  {
 						if (escopo_funcao == 1)
 							inicio_funcao.insert({label, codigo_funcoes.size()});
 						else
-							inicio_funcao_conc.insert({label, para_concatenar.size()});
+							inicio_funcao_conc.insert({label, 0});
 				
 					} 
 					
-					func_args ')' {codigo_funcoes = concatena_vetor(codigo_funcoes, $4.c); $4.c.clear(); ultimo_token = -1;}
+					func_args ')' {if (escopo_funcao == 1) codigo_funcoes = concatena_vetor(codigo_funcoes, $4.c); else para_concatenar.push_back($4.c); ultimo_token = -1; $4.c.clear();}
 									bloco_func
 								
 									{
 										if (escopo_funcao == 1)									
 											codigo_funcoes = concatena_vetor(codigo_funcoes, $7.c);
 										else
-											para_concatenar = concatena_vetor(para_concatenar, $7.c);
+											para_concatenar[escopo_funcao - 2] = concatena_vetor(para_concatenar[escopo_funcao - 2], $7.c);
 									}
 								
 								{
 									if (escopo_funcao == 1)
 									{
-										map<string, int>::iterator i;
-
-										for (i = inicio_funcao_conc.begin() ; i != inicio_funcao_conc.end() ; i++)
-											inicio_funcao.insert({i->first, codigo_funcoes.size() + 5 + i->second});
-										
-										inicio_funcao_conc.clear();
-										
 										codigo_funcoes.push_back("undefined");
 										codigo_funcoes.push_back("@");
 										codigo_funcoes.push_back("'&retorno'");
 										codigo_funcoes.push_back("@");
 										codigo_funcoes.push_back("~");
 										
-										codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar);
+										map<string, int>::iterator i;
+										int pos = 0;
+										
+										for (i = inicio_funcao_conc.begin() ; i != inicio_funcao_conc.end() ; i++)
+										{
+											inicio_funcao.insert({i->first, codigo_funcoes.size()});
+											codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar[pos++]);
+										}
+										
+										inicio_funcao_conc.clear();
 										
 										para_concatenar.clear();										
 									}	
 									
 									else
 									{
-										para_concatenar.push_back("undefined");
-										para_concatenar.push_back("@");
-										para_concatenar.push_back("'&retorno'");
-										para_concatenar.push_back("@");
-										para_concatenar.push_back("~");
-									}					
+										para_concatenar[escopo_funcao - 2].push_back("undefined");
+										para_concatenar[escopo_funcao - 2].push_back("@");
+										para_concatenar[escopo_funcao - 2].push_back("'&retorno'");
+										para_concatenar[escopo_funcao - 2].push_back("@");
+										para_concatenar[escopo_funcao - 2].push_back("~");
+									}
+														
 									ultimo_token = '}';
 									escopo_funcao--;
 									deleta_escopo();

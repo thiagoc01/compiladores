@@ -26,7 +26,7 @@ map<string, int> posicoes_labels_iniciais;
 
 /* Guardam o código das funções e das funções aninhadas */
 vector<string> codigo_funcoes;
-vector<string> para_concatenar;
+vector<vector<string>> para_concatenar;
 
 map<string,int> inicio_funcao; // Guarda o começo de cada função para troca no label
 map<string,int> inicio_funcao_conc; // Análogo ao anterior, mas para as funções que estão aninhadas a uma principal
@@ -267,34 +267,37 @@ decl_func : tk_func LVALUE {
 				if (escopo_funcao == 1)
 					inicio_funcao.insert({label, codigo_funcoes.size()});
 				else
-					inicio_funcao_conc.insert({label, para_concatenar.size()});
+					inicio_funcao_conc.insert({label, 0});
 				
-			} '(' func_args ')'	{if (escopo_funcao == 1) codigo_funcoes = concatena_vetor(codigo_funcoes, $5.c);  else  para_concatenar = concatena_vetor(para_concatenar, $5.c); ultimo_token = -1; $5.c.clear();}
+			} '(' func_args ')'	{if (escopo_funcao == 1) codigo_funcoes = concatena_vetor(codigo_funcoes, $5.c);  else  para_concatenar.push_back($5.c); ultimo_token = -1; $5.c.clear();}
 									bloco_func
 								
 									{	
 										if (escopo_funcao == 1)									
 											codigo_funcoes = concatena_vetor(codigo_funcoes, $8.c);
 										else											
-											para_concatenar = concatena_vetor(para_concatenar, $8.c);
+											para_concatenar[escopo_funcao - 2] = concatena_vetor(para_concatenar[escopo_funcao - 2], $8.c);
 									}
 								
 								{										
 									if (escopo_funcao == 1)
 									{
-										map<string, int>::iterator i;
-
-										for (i = inicio_funcao_conc.begin() ; i != inicio_funcao_conc.end() ; i++)
-											inicio_funcao.insert({i->first, codigo_funcoes.size() + 5 + i->second});
-											
-										inicio_funcao_conc.clear();
 										codigo_funcoes.push_back("undefined");
 										codigo_funcoes.push_back("@");
 										codigo_funcoes.push_back("'&retorno'");
 										codigo_funcoes.push_back("@");
 										codigo_funcoes.push_back("~");
 										
-										codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar);
+										map<string, int>::iterator i;
+										int pos = 0;
+
+										for (i = inicio_funcao_conc.begin() ; i != inicio_funcao_conc.end() ; i++)
+										{
+											inicio_funcao.insert({i->first, codigo_funcoes.size()});
+											codigo_funcoes = concatena_vetor(codigo_funcoes, para_concatenar[pos++]);				
+										}
+											
+										inicio_funcao_conc.clear();
 										
 										para_concatenar.clear();										
 										
@@ -302,11 +305,11 @@ decl_func : tk_func LVALUE {
 									
 									else
 									{
-										para_concatenar.push_back("undefined");
-										para_concatenar.push_back("@");
-										para_concatenar.push_back("'&retorno'");
-										para_concatenar.push_back("@");
-										para_concatenar.push_back("~");
+										para_concatenar[escopo_funcao - 2].push_back("undefined");
+										para_concatenar[escopo_funcao - 2].push_back("@");
+										para_concatenar[escopo_funcao - 2].push_back("'&retorno'");
+										para_concatenar[escopo_funcao - 2].push_back("@");
+										para_concatenar[escopo_funcao - 2].push_back("~");
 									}				
 										
 									escopo_funcao--;
