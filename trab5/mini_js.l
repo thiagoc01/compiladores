@@ -53,7 +53,7 @@ NLPOSS	({LET}|{VAR}|{CONST})
 
 <<EOF>>	{unput(EOF); if (ultimo_token != ';' && ultimo_token != -1) return ';';}
 
-";"[\n \r\t;]*	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; if (ultimo_token != ';') {ultimo_token = ';'; return ';';}}
+";"[\n \r\t;]*	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; if (ultimo_token != ';' && ultimo_token != -1) {ultimo_token = ';'; return ';';}}
 
 "{"[\n \t\r;]*';'[\n \t\r;]*"}"	{for (int i = 0 ; yytext[i] != 0 ; i++) if (yytext[i] == '\n') linha++; }
 
